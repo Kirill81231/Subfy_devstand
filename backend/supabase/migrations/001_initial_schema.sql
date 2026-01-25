@@ -63,6 +63,7 @@ CREATE TABLE subscription_templates (
 );
 
 -- Индекс для поиска шаблонов
+
 CREATE INDEX idx_templates_category ON subscription_templates(category_id);
 CREATE INDEX idx_templates_name ON subscription_templates(name);
 
