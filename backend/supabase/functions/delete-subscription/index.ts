@@ -27,32 +27,24 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Soft delete — ставим is_active = false
-    const { data, error } = await supabase
+    // Soft delete - помечаем как неактивную
+    const { error } = await supabase
       .from("subscriptions")
       .update({ is_active: false })
       .eq("id", subscriptionId)
-      .eq("user_id", userId) // Проверка владельца
-      .select()
-      .single();
+      .eq("user_id", userId);
 
-    if (error) {
-      console.error("Delete error:", error);
-      return new Response(
-        JSON.stringify({ error: "Failed to delete subscription" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (error) throw error;
 
     return new Response(
-      JSON.stringify({ success: true, subscription: data }),
+      JSON.stringify({ success: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
-  } catch (err) {
-    console.error("Error:", err);
+  } catch (error) {
+    console.error("Error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

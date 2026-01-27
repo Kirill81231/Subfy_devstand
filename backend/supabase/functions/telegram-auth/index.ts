@@ -7,59 +7,16 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-async function hmacSha256(key: ArrayBuffer, data: string): Promise<ArrayBuffer> {
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  return await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
-}
-
-function bufferToHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function verifyTelegramAuth(initData: string, botToken: string): Promise<boolean> {
-  try {
-    const params = new URLSearchParams(initData);
-    const hash = params.get("hash");
-    if (!hash) return false;
-    
-    params.delete("hash");
-    const sortedParams = Array.from(params.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
-    
-    const secretKeyData = new TextEncoder().encode("WebAppData");
-    const botTokenData = new TextEncoder().encode(botToken);
-    const secretKeyCryptoKey = await crypto.subtle.importKey(
-      "raw", secretKeyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-    );
-    const secretKey = await crypto.subtle.sign("HMAC", secretKeyCryptoKey, botTokenData);
-    const dataHash = await hmacSha256(secretKey, sortedParams);
-    
-    return bufferToHex(dataHash) === hash;
-  } catch (error) {
-    console.error("Verification error:", error);
-    return false;
-  }
-}
-
-function parseUserData(initData: string): any {
-  const params = new URLSearchParams(initData);
-  const userStr = params.get("user");
-  if (!userStr) return null;
-  try { return JSON.parse(userStr); } catch { return null; }
-}
-
 serve(async (req) => {
+  // CORS
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const { initData } = await req.json();
-    
+    console.log("Auth request received");
+
     if (!initData) {
       return new Response(
         JSON.stringify({ error: "initData is required" }),
@@ -67,64 +24,71 @@ serve(async (req) => {
       );
     }
 
-    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
-    if (!botToken) {
-      console.error("TELEGRAM_BOT_TOKEN not set");
-      return new Response(
-        JSON.stringify({ error: "Server configuration error" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Парсим данные пользователя из initData
+    const params = new URLSearchParams(initData);
+    const userStr = params.get("user");
 
-    const isValid = await verifyTelegramAuth(initData, botToken);
-    const userData = parseUserData(initData);
-    
-    if (!userData) {
+    if (!userStr) {
       return new Response(
-        JSON.stringify({ error: "Invalid user data" }),
+        JSON.stringify({ error: "User data not found" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    let userData;
+    try {
+      userData = JSON.parse(userStr);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid user data format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const userId = String(userData.id);
+    const firstName = userData.first_name || null;
+
+    console.log("User:", userId, firstName);
+
+    // Подключаемся к Supabase
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const userId = userData.id.toString();
-    
-    const { error: userError } = await supabase
+    // Создаём или обновляем пользователя
+    const { data: user, error } = await supabase
       .from("users")
-      .upsert({
-        id: userId,
-        telegram_id: userData.id,
-        first_name: userData.first_name || null,
-        last_name: userData.last_name || null,
-        username: userData.username || null,
-        language_code: userData.language_code || "ru",
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "id" });
+      .upsert(
+        { id: userId, first_name: firstName },
+        { onConflict: "id" }
+      )
+      .select()
+      .single();
 
-    if (userError) console.error("User upsert error:", userError);
+    if (error) {
+      console.error("DB Error:", error);
+      // Даже если ошибка в БД, возвращаем данные пользователя
+      return new Response(
+        JSON.stringify({ 
+          user: { id: userId, first_name: firstName },
+          dbError: error.message 
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("User saved:", user);
 
     return new Response(
-      JSON.stringify({
-        user: {
-          id: userId,
-          telegram_id: userData.id,
-          first_name: userData.first_name,
-          last_name: userData.last_name,
-          username: userData.username,
-        },
-        verified: isValid,
-      }),
+      JSON.stringify({ user }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Auth error:", error);
+    console.error("Error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
