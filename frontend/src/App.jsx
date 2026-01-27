@@ -17,6 +17,58 @@ const ENDPOINTS = {
 };
 
 // ============================================
+// API КЛИЕНТ
+// ============================================
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+const apiHeaders = {
+  'Content-Type': 'application/json',
+  'apikey': ANON_KEY,
+};
+
+const api = {
+  async auth(initData) {
+    const response = await fetch(ENDPOINTS.auth, {
+      method: 'POST',
+      headers: apiHeaders,
+      body: JSON.stringify({ initData }),
+    });
+    if (!response.ok) throw new Error('Auth failed');
+    return response.json();
+  },
+
+  async getSubscriptions(userId) {
+    const response = await fetch(ENDPOINTS.getSubscriptions, {
+      method: 'POST',
+      headers: apiHeaders,
+      body: JSON.stringify({ userId }),
+    });
+    if (!response.ok) throw new Error('Failed to fetch');
+    return response.json();
+  },
+
+  async saveSubscription(userId, subscription) {
+    const response = await fetch(ENDPOINTS.saveSubscription, {
+      method: 'POST',
+      headers: apiHeaders,
+      body: JSON.stringify({ userId, subscription }),
+    });
+    if (!response.ok) throw new Error('Failed to save');
+    return response.json();
+  },
+
+  async deleteSubscription(userId, subscriptionId) {
+    const response = await fetch(ENDPOINTS.deleteSubscription, {
+      method: 'POST',
+      headers: apiHeaders,
+      body: JSON.stringify({ userId, subscriptionId }),
+    });
+    if (!response.ok) throw new Error('Failed to delete');
+    return response.json();
+  },
+};
+
+// ============================================
 // КОНСТАНТЫ
 // ============================================
 const SUBSCRIPTION_TEMPLATES = [
