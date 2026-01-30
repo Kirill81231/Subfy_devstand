@@ -1,19 +1,24 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, X, Calendar, ChevronRight, ChevronLeft, Sun, Moon, Search, Check, Trash2, Edit3, Bell, CreditCard, Loader } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Plus, X, Calendar, ChevronRight, ChevronLeft, Sun, Moon, Search, Check, Trash2, Edit3, Bell, CreditCard, Loader, Settings, TrendingUp, PieChart, ArrowLeft } from 'lucide-react';
 
 // ============================================
 // КОНФИГУРАЦИЯ
 // ============================================
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const AUTH_ENDPOINT = import.meta.env.VITE_AUTH_ENDPOINT || '';
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Edge Functions endpoints
 const API_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : '';
 const ENDPOINTS = {
   auth: AUTH_ENDPOINT || `${API_BASE}/telegram-auth`,
   getSubscriptions: `${API_BASE}/get-subscriptions`,
   saveSubscription: `${API_BASE}/save-subscription`,
   deleteSubscription: `${API_BASE}/delete-subscription`,
+};
+
+const apiHeaders = {
+  'Content-Type': 'application/json',
+  'apikey': ANON_KEY,
 };
 
 // ============================================
@@ -41,10 +46,24 @@ const SUBSCRIPTION_TEMPLATES = [
 ];
 
 const BILLING_CYCLES = [
-  { value: 'weekly', label: 'Еженедельно', multiplier: 4.33, short: 'нед' },
-  { value: 'monthly', label: 'Ежемесячно', multiplier: 1, short: 'мес' },
-  { value: 'quarterly', label: 'Раз в квартал', multiplier: 0.33, short: 'квартал' },
-  { value: 'yearly', label: 'Ежегодно', multiplier: 0.083, short: 'год' },
+  { value: 'weekly', label: 'Еженедельно', days: 7, monthlyMultiplier: 4.33, short: 'нед' },
+  { value: 'biweekly', label: 'Раз в 2 недели', days: 14, monthlyMultiplier: 2.17, short: '2 нед' },
+  { value: 'monthly', label: 'Ежемесячно', days: 30, monthlyMultiplier: 1, short: 'мес' },
+  { value: 'quarterly', label: 'Раз в 3 месяца', days: 90, monthlyMultiplier: 0.33, short: 'квартал' },
+  { value: 'semiannual', label: 'Раз в 6 месяцев', days: 180, monthlyMultiplier: 0.167, short: 'полгода' },
+  { value: 'yearly', label: 'Ежегодно', days: 365, monthlyMultiplier: 0.083, short: 'год' },
+];
+
+const CATEGORIES = [
+  { value: 'Развлечения', label: 'Развлечения', color: '#FF6B6B' },
+  { value: 'Работа', label: 'Работа', color: '#4ECDC4' },
+  { value: 'Экосистема', label: 'Экосистема', color: '#45B7D1' },
+  { value: 'Видео', label: 'Видео', color: '#96CEB4' },
+  { value: 'Музыка', label: 'Музыка', color: '#FFEAA7' },
+  { value: 'Облако', label: 'Облако', color: '#DDA0DD' },
+  { value: 'Образование', label: 'Образование', color: '#98D8C8' },
+  { value: 'Утилиты', label: 'Утилиты', color: '#F7DC6F' },
+  { value: 'Другое', label: 'Другое', color: '#B0BEC5' },
 ];
 
 const CURRENCIES = [
@@ -53,21 +72,35 @@ const CURRENCIES = [
   { code: 'EUR', symbol: '€', rate: 104 },
 ];
 
-const EMOJI_OPTIONS = ['📦', '🎮', '💼', '🏋️', '🎨', '📱', '🖥️', '🎧', '📚', '🎬', '🎵', '☁️', '🔒', '💳', '🛒', '✈️'];
+const NOTIFICATION_DAYS = [
+  { value: 0, label: 'В день списания' },
+  { value: 1, label: 'За 1 день' },
+  { value: 3, label: 'За 3 дня' },
+  { value: 7, label: 'За 7 дней' },
+];
+
+const NOTIFICATION_TIMES = [
+  { value: 'morning', label: 'Утром (9:00)', hour: 9 },
+  { value: 'afternoon', label: 'Днём (14:00)', hour: 14 },
+  { value: 'evening', label: 'Вечером (19:00)', hour: 19 },
+];
 
 // ============================================
 // УТИЛИТЫ
 // ============================================
 const calculateNextBillingDate = (firstDate, cycle) => {
+  if (!firstDate) return null;
   const date = new Date(firstDate);
+  if (isNaN(date.getTime())) return null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
   while (date <= today) {
     switch (cycle) {
       case 'weekly': date.setDate(date.getDate() + 7); break;
+      case 'biweekly': date.setDate(date.getDate() + 14); break;
       case 'monthly': date.setMonth(date.getMonth() + 1); break;
       case 'quarterly': date.setMonth(date.getMonth() + 3); break;
+      case 'semiannual': date.setMonth(date.getMonth() + 6); break;
       case 'yearly': date.setFullYear(date.getFullYear() + 1); break;
       default: date.setMonth(date.getMonth() + 1);
     }
@@ -75,314 +108,278 @@ const calculateNextBillingDate = (firstDate, cycle) => {
   return date;
 };
 
+const getDaysUntil = (date) => {
+  if (!date) return null;
+  const target = new Date(date);
+  if (isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+};
+
+const formatDaysUntil = (days) => {
+  if (days === null || days === undefined) return 'дата не указана';
+  if (days === 0) return 'сегодня';
+  if (days === 1) return 'завтра';
+  if (days < 0) return 'просрочено';
+  if (days < 7) return `через ${days} ${getDayWord(days)}`;
+  if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return `через ${weeks} ${getWeekWord(weeks)}`;
+  }
+  const months = Math.floor(days / 30);
+  return `через ${months} ${getMonthWord(months)}`;
+};
+
+const getDayWord = (n) => {
+  if (n === 1) return 'день';
+  if (n >= 2 && n <= 4) return 'дня';
+  return 'дней';
+};
+
+const getWeekWord = (n) => {
+  if (n === 1) return 'неделю';
+  if (n >= 2 && n <= 4) return 'недели';
+  return 'недель';
+};
+
+const getMonthWord = (n) => {
+  if (n === 1) return 'месяц';
+  if (n >= 2 && n <= 4) return 'месяца';
+  return 'месяцев';
+};
+
 const formatDate = (date) => {
-  return new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  if (!date) return 'дата не указана';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return 'дата не указана';
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 };
 
 const formatDateFull = (date) => {
-  return new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  if (!date) return 'дата не указана';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return 'дата не указана';
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
-// Telegram WebApp helpers
+const formatMoney = (amount, currency = 'RUB') => {
+  const curr = CURRENCIES.find(c => c.code === currency) || CURRENCIES[0];
+  return `${Math.round(amount).toLocaleString('ru-RU')} ${curr.symbol}`;
+};
+
+const getMonthlyAmount = (amount, cycle) => {
+  const cycleInfo = BILLING_CYCLES.find(c => c.value === cycle);
+  return amount * (cycleInfo?.monthlyMultiplier || 1);
+};
+
+const getYearlyAmount = (amount, cycle) => getMonthlyAmount(amount, cycle) * 12;
+
 const getTelegram = () => window.Telegram?.WebApp;
-const hapticFeedback = (type = 'light') => {
-  getTelegram()?.HapticFeedback?.impactOccurred(type);
-};
-const hapticNotification = (type = 'success') => {
-  getTelegram()?.HapticFeedback?.notificationOccurred(type);
-};
+const hapticFeedback = (type = 'light') => getTelegram()?.HapticFeedback?.impactOccurred(type);
+const hapticNotification = (type = 'success') => getTelegram()?.HapticFeedback?.notificationOccurred(type);
 
 // ============================================
 // API КЛИЕНТ
 // ============================================
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-const apiHeaders = {
-  'Content-Type': 'application/json',
-  'apikey': ANON_KEY,
-};
-
 const api = {
   async auth(initData) {
-    const response = await fetch(ENDPOINTS.auth, {
-      method: 'POST',
-      headers: apiHeaders,
-      body: JSON.stringify({ initData }),
-    });
+    const response = await fetch(ENDPOINTS.auth, { method: 'POST', headers: apiHeaders, body: JSON.stringify({ initData }) });
     if (!response.ok) throw new Error('Auth failed');
     return response.json();
   },
-
   async getSubscriptions(userId) {
-    const response = await fetch(ENDPOINTS.getSubscriptions, {
-      method: 'POST',
-      headers: apiHeaders,
-      body: JSON.stringify({ userId }),
-    });
+    const response = await fetch(ENDPOINTS.getSubscriptions, { method: 'POST', headers: apiHeaders, body: JSON.stringify({ userId }) });
     if (!response.ok) throw new Error('Failed to fetch');
     return response.json();
   },
-
   async saveSubscription(userId, subscription) {
-    const response = await fetch(ENDPOINTS.saveSubscription, {
-      method: 'POST',
-      headers: apiHeaders,
-      body: JSON.stringify({ userId, subscription }),
-    });
+    const response = await fetch(ENDPOINTS.saveSubscription, { method: 'POST', headers: apiHeaders, body: JSON.stringify({ userId, subscription }) });
     if (!response.ok) throw new Error('Failed to save');
     return response.json();
   },
-
   async deleteSubscription(userId, subscriptionId) {
-    const response = await fetch(ENDPOINTS.deleteSubscription, {
-      method: 'POST',
-      headers: apiHeaders,
-      body: JSON.stringify({ userId, subscriptionId }),
-    });
+    const response = await fetch(ENDPOINTS.deleteSubscription, { method: 'POST', headers: apiHeaders, body: JSON.stringify({ userId, subscriptionId }) });
     if (!response.ok) throw new Error('Failed to delete');
     return response.json();
   },
 };
 
 // ============================================
+// КОМПОНЕНТ: TOAST
+// ============================================
+const Toast = ({ message, visible, onHide }) => {
+  useEffect(() => {
+    if (visible) {
+      const timer = setTimeout(onHide, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [visible, onHide]);
+  if (!visible) return null;
+  return (
+    <div style={{
+      position: 'fixed', bottom: '100px', left: '50%', transform: 'translateX(-50%)',
+      background: 'rgba(0,0,0,0.8)', color: '#fff', padding: '12px 24px', borderRadius: '25px',
+      fontSize: '14px', fontWeight: '500', zIndex: 9999, animation: 'fadeInUp 0.3s ease',
+    }}>{message}</div>
+  );
+};
+
+// ============================================
 // КОМПОНЕНТ: ОНБОРДИНГ
 // ============================================
-const OnboardingScreen = ({ onComplete }) => {
+const OnboardingScreen = ({ onComplete, userName }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
+  const displayName = userName || 'друг';
 
   const slides = [
-    {
-      emoji: '👋',
-      title: 'Привет!',
-      subtitle: 'Это Subfy',
-      description: 'Сервис отслеживания подписок прямо в Telegram',
-    },
-    {
-      emoji: '📊',
-      title: 'Все подписки',
-      subtitle: 'в одном месте',
-      description: 'Добавляй подписки из готовых шаблонов или создавай свои',
-    },
-    {
-      emoji: '🔔',
-      title: 'Уведомления',
-      subtitle: 'о списаниях',
-      description: 'Получай напоминания за 3 дня и в день списания',
-    },
+    { emoji: '👋', title: `Привет, ${displayName}!`, subtitle: 'Это Subfy', description: 'Сервис отслеживания подписок прямо в Telegram' },
+    { emoji: '📊', title: 'Все расходы', subtitle: 'под контролем', description: 'Смотри сколько тратишь в месяц и в год на подписки' },
+    { emoji: '🔔', title: 'Напомним', subtitle: 'о списании', description: 'Получай уведомления заранее и в день оплаты' },
+    { emoji: '📅', title: 'Календарь', subtitle: 'расходов', description: 'Планируй бюджет с наглядным календарём платежей' },
   ];
-
-  const handleTouchStart = (e) => {
-    setTouchStart(e.touches[0].clientX);
-  };
-
-  const handleTouchMove = (e) => {
-    setTouchEnd(e.touches[0].clientX);
-  };
 
   const handleTouchEnd = () => {
     if (!touchStart || !touchEnd) return;
-    
     const distance = touchStart - touchEnd;
-    const minSwipeDistance = 50;
-
-    if (Math.abs(distance) > minSwipeDistance) {
-      if (distance > 0 && currentSlide < slides.length - 1) {
-        setCurrentSlide(prev => prev + 1);
-        hapticFeedback('light');
-      } else if (distance < 0 && currentSlide > 0) {
-        setCurrentSlide(prev => prev - 1);
-        hapticFeedback('light');
-      }
+    if (Math.abs(distance) > 50) {
+      if (distance > 0 && currentSlide < slides.length - 1) setCurrentSlide(prev => prev + 1);
+      else if (distance < 0 && currentSlide > 0) setCurrentSlide(prev => prev - 1);
     }
-
     setTouchStart(0);
     setTouchEnd(0);
   };
 
-  const handleStart = () => {
-    hapticNotification('success');
-    onComplete();
-  };
-
   return (
-    <div className="onboarding">
-      <div 
-        className="onboarding-slides"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        <div 
-          className="slides-track" 
-          style={{ transform: `translateX(-${currentSlide * 100}%)` }}
-        >
-          {slides.map((slide, index) => (
-            <div key={index} className="slide">
-              <div className="slide-emoji">{slide.emoji}</div>
-              <h1 className="slide-title">{slide.title}</h1>
-              <h2 className="slide-subtitle">{slide.subtitle}</h2>
-              <p className="slide-description">{slide.description}</p>
-            </div>
-          ))}
-        </div>
+    <div style={{
+      position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000,
+    }}
+    onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
+    onTouchMove={(e) => setTouchEnd(e.touches[0].clientX)}
+    onTouchEnd={handleTouchEnd}>
+      <div style={{ fontSize: '80px', marginBottom: '20px' }}>{slides[currentSlide].emoji}</div>
+      <h1 style={{ color: '#fff', fontSize: '28px', fontWeight: '700', margin: '0 0 8px', textAlign: 'center' }}>{slides[currentSlide].title}</h1>
+      <h2 style={{ color: 'rgba(255,255,255,0.9)', fontSize: '24px', fontWeight: '500', margin: '0 0 16px', textAlign: 'center' }}>{slides[currentSlide].subtitle}</h2>
+      <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '16px', textAlign: 'center', maxWidth: '280px', lineHeight: '1.5' }}>{slides[currentSlide].description}</p>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '40px' }}>
+        {slides.map((_, idx) => (
+          <div key={idx} style={{
+            width: idx === currentSlide ? '24px' : '8px', height: '8px', borderRadius: '4px',
+            background: idx === currentSlide ? '#fff' : 'rgba(255,255,255,0.4)', transition: 'all 0.3s ease',
+          }} />
+        ))}
       </div>
-
-      <div className="onboarding-footer">
-        <div className="dots">
-          {slides.map((_, index) => (
-            <button
-              key={index}
-              className={`dot ${index === currentSlide ? 'active' : ''}`}
-              onClick={() => {
-                setCurrentSlide(index);
-                hapticFeedback('light');
-              }}
-            />
-          ))}
-        </div>
-
-        {currentSlide === slides.length - 1 ? (
-          <button className="start-btn" onClick={handleStart}>
-            Начать
-          </button>
-        ) : (
-          <button className="next-btn" onClick={() => {
-            setCurrentSlide(prev => prev + 1);
-            hapticFeedback('light');
-          }}>
-            Далее
-            <ChevronRight size={20} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ============================================
-// КОМПОНЕНТ: ЗАГРУЗКА
-// ============================================
-const LoadingScreen = ({ message = 'Загрузка...' }) => (
-  <div className="loading-screen">
-    <div className="loading-content">
-      <div className="loading-logo">Subfy</div>
-      <Loader className="loading-spinner" size={32} />
-      <p className="loading-message">{message}</p>
-    </div>
-  </div>
-);
-
-// ============================================
-// КОМПОНЕНТ: ЛОГОТИП
-// ============================================
-const Logo = ({ domain, emoji, color, size = 32 }) => {
-  const [hasError, setHasError] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  
-  const logoUrl = domain ? `https://logo.clearbit.com/${domain}` : null;
-  
-  if (!domain || hasError) {
-    return (
-      <div 
-        className="logo-emoji" 
-        style={{ 
-          width: size, 
-          height: size, 
-          background: color + '20', 
-          color: color,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: 8,
-          fontSize: size * 0.5,
-          flexShrink: 0,
-        }}
-      >
-        {emoji || '📦'}
-      </div>
-    );
-  }
-  
-  return (
-    <div 
-      className="logo-container" 
-      style={{ 
-        width: size, 
-        height: size, 
-        background: loaded ? 'white' : color + '20',
-        borderRadius: 8,
-        overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-      }}
-    >
-      <img
-        src={logoUrl}
-        alt=""
-        style={{ 
-          width: size - 4, 
-          height: size - 4, 
-          objectFit: 'contain',
-          opacity: loaded ? 1 : 0,
-          transition: 'opacity 0.2s'
-        }}
-        onLoad={() => setLoaded(true)}
-        onError={() => setHasError(true)}
-      />
-      {!loaded && !hasError && (
-        <div style={{ fontSize: size * 0.5 }}>{emoji || '📦'}</div>
+      {currentSlide === slides.length - 1 ? (
+        <button onClick={() => { hapticFeedback('medium'); onComplete(); }} style={{
+          marginTop: '40px', padding: '16px 48px', background: '#fff', color: '#667eea',
+          border: 'none', borderRadius: '30px', fontSize: '18px', fontWeight: '600', cursor: 'pointer',
+        }}>Начать</button>
+      ) : (
+        <button onClick={() => setCurrentSlide(slides.length - 1)} style={{
+          marginTop: '40px', padding: '12px 24px', background: 'transparent', color: 'rgba(255,255,255,0.8)',
+          border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', fontSize: '14px', cursor: 'pointer',
+        }}>Пропустить</button>
       )}
     </div>
   );
 };
 
 // ============================================
-// КОМПОНЕНТ: КАРТОЧКА ПОДПИСКИ
+// КОМПОНЕНТ: ЭКРАН АНАЛИТИКИ
 // ============================================
-const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
-  const currency = currencies.find(c => c.code === subscription.currency) || currencies[0];
-  const nextDate = calculateNextBillingDate(subscription.first_billing_date || subscription.firstBillingDate, subscription.billing_cycle || subscription.billingCycle);
-  const daysUntil = Math.ceil((nextDate - new Date()) / (1000 * 60 * 60 * 24));
-  const cycle = BILLING_CYCLES.find(c => c.value === (subscription.billing_cycle || subscription.billingCycle));
-  
+const AnalyticsScreen = ({ subscriptions, onBack }) => {
+  const [period, setPeriod] = useState('month');
+  const stats = useMemo(() => {
+    const monthly = subscriptions.reduce((sum, sub) => sum + getMonthlyAmount(sub.amount, sub.billing_cycle || sub.billingCycle || 'monthly'), 0);
+    const yearly = monthly * 12;
+    const count = subscriptions.length;
+    const byCategory = {};
+    subscriptions.forEach(sub => {
+      const cat = sub.category || 'Другое';
+      const monthlyAmount = getMonthlyAmount(sub.amount, sub.billing_cycle || sub.billingCycle || 'monthly');
+      byCategory[cat] = (byCategory[cat] || 0) + monthlyAmount;
+    });
+    const topExpensive = [...subscriptions]
+      .map(sub => ({
+        ...sub,
+        monthlyAmount: getMonthlyAmount(sub.amount, sub.billing_cycle || sub.billingCycle || 'monthly'),
+        yearlyAmount: getYearlyAmount(sub.amount, sub.billing_cycle || sub.billingCycle || 'monthly'),
+      }))
+      .sort((a, b) => b.yearlyAmount - a.yearlyAmount)
+      .slice(0, 5);
+    return { monthly, yearly, count, byCategory, topExpensive };
+  }, [subscriptions]);
+
+  const categoryColors = { 'Развлечения': '#FF6B6B', 'Работа': '#4ECDC4', 'Экосистема': '#45B7D1', 'Видео': '#96CEB4', 'Музыка': '#FFEAA7', 'Облако': '#DDA0DD', 'Образование': '#98D8C8', 'Утилиты': '#F7DC6F', 'Другое': '#B0BEC5' };
+  const maxCategoryValue = Math.max(...Object.values(stats.byCategory), 1);
+
   return (
-    <div className="sub-card" style={{ '--accent': subscription.color }}>
-      <div className="sub-card-accent" />
-      <div className="sub-card-content">
-        <div className="sub-card-header">
-          <Logo 
-            domain={subscription.domain} 
-            emoji={subscription.icon} 
-            color={subscription.color}
-            size={44}
-          />
-          <div className="sub-info">
-            <h3 className="sub-name">{subscription.name}</h3>
-            <span className="sub-category">{subscription.category}</span>
-          </div>
-          <div className="sub-actions">
-            <button className="icon-btn" onClick={() => { hapticFeedback(); onEdit(subscription); }}>
-              <Edit3 size={16} />
-            </button>
-            <button className="icon-btn delete" onClick={() => { hapticNotification('warning'); onDelete(subscription.id); }}>
-              <Trash2 size={16} />
-            </button>
-          </div>
+    <div style={{ position: 'fixed', inset: 0, background: '#f5f5f5', zIndex: 100, overflow: 'auto', paddingBottom: '100px' }}>
+      <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '60px 20px 30px', color: '#fff' }}>
+        <button onClick={onBack} style={{
+          position: 'absolute', top: '20px', left: '16px', background: 'rgba(255,255,255,0.2)',
+          border: 'none', borderRadius: '50%', width: '40px', height: '40px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}><ArrowLeft size={20} color="#fff" /></button>
+        <h1 style={{ fontSize: '24px', fontWeight: '700', margin: '0 0 20px', textAlign: 'center' }}>Аналитика</h1>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', textAlign: 'center' }}>
+          <div><div style={{ fontSize: '24px', fontWeight: '700' }}>{formatMoney(stats.monthly)}</div><div style={{ fontSize: '12px', opacity: 0.8 }}>в месяц</div></div>
+          <div><div style={{ fontSize: '24px', fontWeight: '700' }}>{formatMoney(stats.yearly)}</div><div style={{ fontSize: '12px', opacity: 0.8 }}>в год</div></div>
+          <div><div style={{ fontSize: '24px', fontWeight: '700' }}>{stats.count}</div><div style={{ fontSize: '12px', opacity: 0.8 }}>{stats.count === 1 ? 'подписка' : 'подписок'}</div></div>
         </div>
-        <div className="sub-card-footer">
-          <div className="sub-price">
-            <span className="price-amount">{subscription.amount.toLocaleString('ru-RU')}</span>
-            <span className="price-currency">{currency.symbol}</span>
-            <span className="price-cycle">/{cycle?.short}</span>
-          </div>
-          <div className={`sub-next ${daysUntil <= 3 ? 'soon' : ''}`}>
-            <Bell size={14} />
-            <span>{daysUntil === 0 ? 'Сегодня' : daysUntil === 1 ? 'Завтра' : `Через ${daysUntil} дн.`}</span>
-          </div>
+      </div>
+      <div style={{ padding: '20px', display: 'flex', gap: '10px' }}>
+        {['month', 'year'].map(p => (
+          <button key={p} onClick={() => setPeriod(p)} style={{
+            flex: 1, padding: '12px', background: period === p ? '#667eea' : '#fff',
+            color: period === p ? '#fff' : '#333', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer',
+          }}>{p === 'month' ? 'Месяц' : 'Год'}</button>
+        ))}
+      </div>
+      <div style={{ padding: '0 20px 20px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#333' }}>По категориям</h3>
+        <div style={{ background: '#fff', borderRadius: '16px', padding: '16px' }}>
+          {Object.entries(stats.byCategory).length === 0 ? (
+            <p style={{ color: '#999', textAlign: 'center', padding: '20px 0' }}>Нет данных</p>
+          ) : (
+            Object.entries(stats.byCategory).sort((a, b) => b[1] - a[1]).map(([category, amount]) => (
+              <div key={category} style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '14px', color: '#333' }}>{category}</span>
+                  <span style={{ fontSize: '14px', fontWeight: '600', color: '#333' }}>{formatMoney(period === 'year' ? amount * 12 : amount)}</span>
+                </div>
+                <div style={{ height: '8px', background: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${(amount / maxCategoryValue) * 100}%`, background: categoryColors[category] || '#667eea', borderRadius: '4px', transition: 'width 0.3s ease' }} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+      <div style={{ padding: '0 20px 20px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#333' }}>Самые дорогие</h3>
+        <div style={{ background: '#fff', borderRadius: '16px', overflow: 'hidden' }}>
+          {stats.topExpensive.length === 0 ? (
+            <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>Нет подписок</p>
+          ) : (
+            stats.topExpensive.map((sub, idx) => (
+              <div key={sub.id} style={{ display: 'flex', alignItems: 'center', padding: '16px', borderBottom: idx < stats.topExpensive.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: sub.color || '#667eea', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '12px', fontWeight: '700', color: '#fff' }}>{idx + 1}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>{sub.name}</div>
+                  <div style={{ fontSize: '12px', color: '#999' }}>{formatMoney(sub.monthlyAmount)}/мес</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '16px', fontWeight: '600', color: '#333' }}>{formatMoney(sub.yearlyAmount)}</div>
+                  <div style={{ fontSize: '12px', color: '#999' }}>в год</div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -390,395 +387,274 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
 };
 
 // ============================================
-// КОМПОНЕНТ: ФОРМА ПОДПИСКИ
+// КОМПОНЕНТ: SWIPEABLE КАРТОЧКА
 // ============================================
-const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading }) => {
-  const [step, setStep] = useState(editData ? 2 : 1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Все');
-  const [formData, setFormData] = useState(editData ? {
-    ...editData,
-    firstBillingDate: editData.first_billing_date || editData.firstBillingDate,
-    billingCycle: editData.billing_cycle || editData.billingCycle,
-  } : {
-    name: '',
-    amount: '',
-    currency: 'RUB',
-    billingCycle: 'monthly',
-    firstBillingDate: new Date().toISOString().split('T')[0],
-    category: 'Другое',
-    color: '#6366f1',
-    icon: '📦',
-    domain: null,
-    isCustom: true,
-  });
+const SwipeableSubscriptionCard = ({ subscription, onClick, onDelete }) => {
+  const [swipeX, setSwipeX] = useState(0);
+  const [startX, setStartX] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const nextBilling = subscription.next_billing_date || calculateNextBillingDate(subscription.first_billing_date || subscription.firstBillingDate, subscription.billing_cycle || subscription.billingCycle || 'monthly');
+  const daysUntil = getDaysUntil(nextBilling);
+  const cycle = BILLING_CYCLES.find(c => c.value === (subscription.billing_cycle || subscription.billingCycle)) || BILLING_CYCLES[2];
 
-  const filteredTemplates = templates.filter(t => {
-    const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'Все' || t.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const handleTouchStart = (e) => { setStartX(e.touches[0].clientX); setIsSwiping(true); };
+  const handleTouchMove = (e) => { if (!isSwiping) return; const diff = e.touches[0].clientX - startX; if (diff < 0) setSwipeX(Math.max(diff, -100)); };
+  const handleTouchEnd = () => { setIsSwiping(false); setSwipeX(swipeX < -80 ? -100 : 0); };
+  const handleDeleteClick = (e) => { e.stopPropagation(); onDelete(subscription); };
 
-  const selectTemplate = (template) => {
-    hapticFeedback('medium');
-    setFormData({
-      ...formData,
-      name: template.name,
-      amount: template.price,
-      color: template.color,
-      icon: template.icon || '📦',
-      domain: template.domain,
-      category: template.category,
-      isCustom: false,
-      templateId: template.id,
-    });
-    setStep(2);
-  };
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: '16px', marginBottom: '12px' }}>
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '100px', background: '#FF3B30', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '16px' }}>
+        <button onClick={handleDeleteClick} style={{ background: 'transparent', border: 'none', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <Trash2 size={20} /><span style={{ fontSize: '12px' }}>Удалить</span>
+        </button>
+      </div>
+      <div onClick={() => swipeX === 0 && onClick(subscription)} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+        style={{ background: '#fff', borderRadius: '16px', padding: '16px', display: 'flex', alignItems: 'center', cursor: 'pointer', transform: `translateX(${swipeX}px)`, transition: isSwiping ? 'none' : 'transform 0.3s ease' }}>
+        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: subscription.color || '#667eea', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '24px' }}>
+          {subscription.icon || subscription.name?.charAt(0) || '📦'}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '16px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>{subscription.name}</div>
+          <div style={{ fontSize: '13px', color: '#999' }}>{formatDaysUntil(daysUntil)}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '16px', fontWeight: '700', color: '#333' }}>{formatMoney(subscription.amount, subscription.currency)}</div>
+          <div style={{ fontSize: '12px', color: '#999' }}>/ {cycle.short}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-  const handleSave = () => {
-    if (!formData.name || !formData.amount) return;
-    hapticNotification('success');
-    onSave({
-      ...formData,
-      id: editData?.id,
-      amount: parseFloat(formData.amount),
-      first_billing_date: formData.firstBillingDate,
-      billing_cycle: formData.billingCycle,
-    });
+// ============================================
+// КОМПОНЕНТ: МОДАЛЬНОЕ ПОДТВЕРЖДЕНИЕ
+// ============================================
+const ConfirmModal = ({ visible, title, message, onConfirm, onCancel }) => {
+  if (!visible) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }} onClick={onCancel}>
+      <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', maxWidth: '300px', width: '100%' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '12px', textAlign: 'center' }}>{title}</h3>
+        <p style={{ fontSize: '14px', color: '#666', marginBottom: '24px', textAlign: 'center' }}>{message}</p>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: '14px', background: '#f0f0f0', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600', color: '#333', cursor: 'pointer' }}>Отмена</button>
+          <button onClick={onConfirm} style={{ flex: 1, padding: '14px', background: '#FF3B30', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600', color: '#fff', cursor: 'pointer' }}>Удалить</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// КОМПОНЕНТ: ВЫБОР ПЕРИОДИЧНОСТИ
+// ============================================
+const BillingCycleSelector = ({ value, onChange }) => {
+  const [showOther, setShowOther] = useState(false);
+  const mainOptions = ['monthly', 'yearly'];
+  const otherOptions = ['weekly', 'biweekly', 'quarterly', 'semiannual'];
+  const currentCycle = BILLING_CYCLES.find(c => c.value === value);
+  const isOther = otherOptions.includes(value);
+
+  return (
+    <div>
+      <label style={{ fontSize: '14px', color: '#666', marginBottom: '8px', display: 'block' }}>Периодичность</label>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+        {mainOptions.map(opt => {
+          const cycle = BILLING_CYCLES.find(c => c.value === opt);
+          return (
+            <button key={opt} onClick={() => { onChange(opt); setShowOther(false); }} style={{
+              flex: 1, padding: '14px', background: value === opt ? '#667eea' : '#f5f5f5',
+              color: value === opt ? '#fff' : '#333', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer',
+            }}>{cycle?.label}</button>
+          );
+        })}
+      </div>
+      <button onClick={() => setShowOther(!showOther)} style={{ background: 'transparent', border: 'none', color: '#667eea', fontSize: '14px', cursor: 'pointer', padding: '8px 0' }}>
+        {isOther ? `Выбрано: ${currentCycle?.label}` : 'Другой период →'}
+      </button>
+      {showOther && (
+        <div style={{ background: '#f5f5f5', borderRadius: '12px', padding: '8px', marginTop: '8px' }}>
+          {otherOptions.map(opt => {
+            const cycle = BILLING_CYCLES.find(c => c.value === opt);
+            return (
+              <button key={opt} onClick={() => { onChange(opt); setShowOther(false); }} style={{
+                display: 'block', width: '100%', padding: '12px', background: value === opt ? '#667eea' : 'transparent',
+                color: value === opt ? '#fff' : '#333', border: 'none', borderRadius: '8px', fontSize: '14px', textAlign: 'left', cursor: 'pointer', marginBottom: '4px',
+              }}>{cycle?.label}</button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================
+// КОМПОНЕНТ: НАСТРОЙКИ УВЕДОМЛЕНИЙ
+// ============================================
+const SubscriptionNotificationSettings = ({ settings, onChange }) => {
+  const { enabled, daysBefore, onDay, timeOfDay } = settings;
+  const getSummary = () => {
+    if (!enabled) return 'Уведомления отключены';
+    let parts = [];
+    if (daysBefore > 0) parts.push(`за ${daysBefore} ${getDayWord(daysBefore)}`);
+    if (onDay) parts.push('в день списания');
+    const time = NOTIFICATION_TIMES.find(t => t.value === timeOfDay)?.label || 'утром';
+    return `Напомним ${parts.join(' и ')}, ${time.toLowerCase()}`;
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <button className="back-btn" onClick={() => {
-            hapticFeedback();
-            step === 1 ? onClose() : setStep(1);
-          }}>
-            {step === 1 ? <X size={20} /> : <ChevronLeft size={20} />}
-          </button>
-          <h2>{editData ? 'Редактировать' : step === 1 ? 'Выберите сервис' : 'Настройка'}</h2>
-          <div style={{ width: 32 }} />
+    <div style={{ background: '#f5f5f5', borderRadius: '16px', padding: '16px', marginTop: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Bell size={20} color="#667eea" /><span style={{ fontSize: '16px', fontWeight: '600' }}>Уведомления</span>
         </div>
-
-        {step === 1 ? (
-          <div className="template-selector">
-            <div className="search-box">
-              <Search size={18} />
-              <input
-                type="text"
-                placeholder="Поиск сервиса..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-            </div>
-            
-            <div className="category-tabs">
-              {['Все', 'Экосистема', 'Видео', 'Музыка', 'Облако', 'Другое'].map(cat => (
-                <button
-                  key={cat}
-                  className={`cat-tab ${selectedCategory === cat ? 'active' : ''}`}
-                  onClick={() => {
-                    hapticFeedback('light');
-                    setSelectedCategory(cat);
-                  }}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            <div className="template-grid">
-              <button className="template-item custom" onClick={() => {
-                hapticFeedback('medium');
-                setStep(2);
-              }}>
-                <div className="template-icon" style={{ background: '#6366f1' }}>
-                  <Plus size={24} color="white" />
-                </div>
-                <span>Своя</span>
-              </button>
-              {filteredTemplates.map(template => (
-                <button key={template.id} className="template-item" onClick={() => selectTemplate(template)}>
-                  <Logo domain={template.domain} color={template.color} size={40} />
-                  <span>{template.name}</span>
-                </button>
+        <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+          <input type="checkbox" checked={enabled} onChange={(e) => onChange({ ...settings, enabled: e.target.checked })} style={{ opacity: 0, width: 0, height: 0 }} />
+          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: enabled ? '#667eea' : '#ccc', borderRadius: '28px', transition: '0.3s' }}>
+            <span style={{ position: 'absolute', height: '22px', width: '22px', left: enabled ? '25px' : '3px', bottom: '3px', background: '#fff', borderRadius: '50%', transition: '0.3s' }} />
+          </span>
+        </label>
+      </div>
+      {enabled && (
+        <>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ fontSize: '13px', color: '#666', marginBottom: '8px', display: 'block' }}>Напомнить за</label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {NOTIFICATION_DAYS.filter(d => d.value > 0).map(day => (
+                <button key={day.value} onClick={() => onChange({ ...settings, daysBefore: day.value })} style={{
+                  padding: '10px 16px', background: daysBefore === day.value ? '#667eea' : '#fff',
+                  color: daysBefore === day.value ? '#fff' : '#333', border: 'none', borderRadius: '20px', fontSize: '13px', cursor: 'pointer',
+                }}>{day.label}</button>
               ))}
             </div>
           </div>
-        ) : (
-          <div className="subscription-form">
-            <div className="form-preview">
-              <Logo 
-                domain={formData.domain} 
-                emoji={formData.icon} 
-                color={formData.color}
-                size={56}
-              />
-              <div className="preview-info">
-                <h3>{formData.name || 'Название'}</h3>
-                <p>{formData.amount ? `${formData.amount} ${CURRENCIES.find(c => c.code === formData.currency)?.symbol}` : '0 ₽'}</p>
-              </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <span style={{ fontSize: '14px', color: '#333' }}>Также в день списания</span>
+            <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+              <input type="checkbox" checked={onDay} onChange={(e) => onChange({ ...settings, onDay: e.target.checked })} style={{ opacity: 0, width: 0, height: 0 }} />
+              <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: onDay ? '#667eea' : '#ccc', borderRadius: '28px', transition: '0.3s' }}>
+                <span style={{ position: 'absolute', height: '22px', width: '22px', left: onDay ? '25px' : '3px', bottom: '3px', background: '#fff', borderRadius: '50%', transition: '0.3s' }} />
+              </span>
+            </label>
+          </div>
+          <div>
+            <label style={{ fontSize: '13px', color: '#666', marginBottom: '8px', display: 'block' }}>Время уведомления</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {NOTIFICATION_TIMES.map(time => (
+                <button key={time.value} onClick={() => onChange({ ...settings, timeOfDay: time.value })} style={{
+                  flex: 1, padding: '10px', background: timeOfDay === time.value ? '#667eea' : '#fff',
+                  color: timeOfDay === time.value ? '#fff' : '#333', border: 'none', borderRadius: '12px', fontSize: '12px', cursor: 'pointer',
+                }}>{time.value === 'morning' ? '🌅 Утром' : time.value === 'afternoon' ? '☀️ Днём' : '🌙 Вечером'}</button>
+              ))}
             </div>
+          </div>
+        </>
+      )}
+      <p style={{ fontSize: '12px', color: '#999', marginTop: '16px', fontStyle: 'italic' }}>{getSummary()}</p>
+    </div>
+  );
+};
 
-            {formData.isCustom && (
-              <div className="form-section">
-                <label>Название</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Название подписки"
-                />
-              </div>
-            )}
+// ============================================
+// КОМПОНЕНТ: РЕДАКТОР ПОДПИСКИ
+// ============================================
+const SubscriptionEditor = ({ subscription, templates, onSave, onClose }) => {
+  const [formData, setFormData] = useState({
+    name: subscription?.name || '',
+    amount: subscription?.amount || '',
+    currency: subscription?.currency || 'RUB',
+    billing_cycle: subscription?.billing_cycle || subscription?.billingCycle || 'monthly',
+    first_billing_date: subscription?.first_billing_date || subscription?.firstBillingDate || new Date().toISOString().split('T')[0],
+    category: subscription?.category || 'Другое',
+    color: subscription?.color || '#667eea',
+    icon: subscription?.icon || '📦',
+    payment_method: subscription?.payment_method || '',
+    notification_settings: subscription?.notification_settings || { enabled: true, daysBefore: 3, onDay: true, timeOfDay: 'morning' },
+  });
+  const [showTemplates, setShowTemplates] = useState(!subscription);
+  const [search, setSearch] = useState('');
 
-            <div className="form-row">
-              <div className="form-section flex-1">
-                <label>Сумма</label>
-                <input
-                  type="number"
-                  value={formData.amount}
-                  onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                  placeholder="299"
-                />
-              </div>
-              <div className="form-section">
-                <label>Валюта</label>
-                <div className="currency-selector">
-                  {CURRENCIES.map(cur => (
-                    <button
-                      key={cur.code}
-                      className={`currency-btn ${formData.currency === cur.code ? 'active' : ''}`}
-                      onClick={() => {
-                        hapticFeedback('light');
-                        setFormData({ ...formData, currency: cur.code });
-                      }}
-                    >
-                      {cur.symbol}
+  const filteredTemplates = templates.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
+  const groupedTemplates = filteredTemplates.reduce((acc, t) => { const cat = t.category || 'Другое'; if (!acc[cat]) acc[cat] = []; acc[cat].push(t); return acc; }, {});
+
+  const selectTemplate = (template) => {
+    setFormData({ ...formData, name: template.name, amount: template.price || template.default_price, color: template.color, category: template.category, icon: template.icon || template.name.charAt(0) });
+    setShowTemplates(false);
+  };
+
+  const handleSave = () => { if (!formData.name || !formData.amount) return; hapticFeedback('medium'); onSave({ ...subscription, ...formData, amount: parseFloat(formData.amount) }); };
+  const isEditing = !!subscription?.id;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#f5f5f5', zIndex: 100, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ background: '#fff', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eee', flexShrink: 0 }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontSize: '16px', color: '#667eea', cursor: 'pointer' }}>Отмена</button>
+        <h2 style={{ fontSize: '17px', fontWeight: '600', margin: 0 }}>{isEditing ? 'Редактирование' : 'Новая подписка'}</h2>
+        <button onClick={handleSave} disabled={!formData.name || !formData.amount} style={{ background: 'transparent', border: 'none', fontSize: '16px', color: formData.name && formData.amount ? '#667eea' : '#ccc', fontWeight: '600', cursor: formData.name && formData.amount ? 'pointer' : 'default' }}>{isEditing ? 'Сохранить' : 'Добавить'}</button>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' }}>
+        {showTemplates && !isEditing && (
+          <div style={{ padding: '16px 20px' }}>
+            <input type="text" placeholder="Поиск сервиса..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: '100%', padding: '14px 16px', border: 'none', borderRadius: '12px', fontSize: '16px', background: '#fff', marginBottom: '16px', boxSizing: 'border-box' }} />
+            {Object.entries(groupedTemplates).map(([category, items]) => (
+              <div key={category} style={{ marginBottom: '20px' }}>
+                <h4 style={{ fontSize: '13px', color: '#999', marginBottom: '10px', textTransform: 'uppercase' }}>{category}</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                  {items.map(template => (
+                    <button key={template.id} onClick={() => selectTemplate(template)} style={{ background: '#fff', border: 'none', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: template.color, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', color: '#fff', fontSize: '18px', fontWeight: '700' }}>{template.icon || template.name.charAt(0)}</div>
+                      <span style={{ fontSize: '13px', fontWeight: '500', color: '#333' }}>{template.name}</span>
+                      <span style={{ fontSize: '12px', color: '#999' }}>{formatMoney(template.price || template.default_price)}</span>
                     </button>
                   ))}
                 </div>
               </div>
+            ))}
+            <button onClick={() => setShowTemplates(false)} style={{ width: '100%', padding: '16px', background: '#fff', border: 'none', borderRadius: '12px', fontSize: '16px', color: '#667eea', fontWeight: '600', cursor: 'pointer', marginTop: '10px' }}>+ Создать свою подписку</button>
+          </div>
+        )}
+        {(!showTemplates || isEditing) && (
+          <div style={{ padding: '20px' }}>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontSize: '14px', color: '#666', marginBottom: '8px', display: 'block' }}>Название</label>
+              <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Например, Netflix" style={{ width: '100%', padding: '14px 16px', border: 'none', borderRadius: '12px', fontSize: '16px', background: '#fff', boxSizing: 'border-box' }} />
             </div>
-
-            <div className="form-section">
-              <label>Периодичность</label>
-              <div className="cycle-selector">
-                {BILLING_CYCLES.map(cycle => (
-                  <button
-                    key={cycle.value}
-                    className={`cycle-btn ${formData.billingCycle === cycle.value ? 'active' : ''}`}
-                    onClick={() => {
-                      hapticFeedback('light');
-                      setFormData({ ...formData, billingCycle: cycle.value });
-                    }}
-                  >
-                    {cycle.label}
-                  </button>
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+              <div style={{ flex: 2 }}>
+                <label style={{ fontSize: '14px', color: '#666', marginBottom: '8px', display: 'block' }}>Сумма</label>
+                <input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} placeholder="0" style={{ width: '100%', padding: '14px 16px', border: 'none', borderRadius: '12px', fontSize: '16px', background: '#fff', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '14px', color: '#666', marginBottom: '8px', display: 'block' }}>Валюта</label>
+                <select value={formData.currency} onChange={(e) => setFormData({ ...formData, currency: e.target.value })} style={{ width: '100%', padding: '14px 16px', border: 'none', borderRadius: '12px', fontSize: '16px', background: '#fff', boxSizing: 'border-box' }}>
+                  {CURRENCIES.map(c => (<option key={c.code} value={c.code}>{c.symbol} {c.code}</option>))}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: '20px' }}><BillingCycleSelector value={formData.billing_cycle} onChange={(value) => setFormData({ ...formData, billing_cycle: value })} /></div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontSize: '14px', color: '#666', marginBottom: '8px', display: 'block' }}>Дата первого списания</label>
+              <input type="date" value={formData.first_billing_date} onChange={(e) => setFormData({ ...formData, first_billing_date: e.target.value })} style={{ width: '100%', padding: '14px 16px', border: 'none', borderRadius: '12px', fontSize: '16px', background: '#fff', boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontSize: '14px', color: '#666', marginBottom: '8px', display: 'block' }}>Категория</label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {CATEGORIES.map(cat => (
+                  <button key={cat.value} onClick={() => setFormData({ ...formData, category: cat.value })} style={{ padding: '10px 16px', background: formData.category === cat.value ? cat.color : '#fff', color: formData.category === cat.value ? '#fff' : '#333', border: 'none', borderRadius: '20px', fontSize: '13px', cursor: 'pointer' }}>{cat.label}</button>
                 ))}
               </div>
             </div>
-
-            <div className="form-section">
-              <label>Дата первого списания</label>
-              <input
-                type="date"
-                value={formData.firstBillingDate}
-                onChange={e => setFormData({ ...formData, firstBillingDate: e.target.value })}
-              />
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontSize: '14px', color: '#666', marginBottom: '8px', display: 'block' }}>Способ оплаты (опционально)</label>
+              <input type="text" value={formData.payment_method} onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })} placeholder="Например, Тинькофф *1234" style={{ width: '100%', padding: '14px 16px', border: 'none', borderRadius: '12px', fontSize: '16px', background: '#fff', boxSizing: 'border-box' }} />
             </div>
-
-            {formData.isCustom && (
-              <>
-                <div className="form-section">
-                  <label>Иконка</label>
-                  <div className="emoji-selector">
-                    {EMOJI_OPTIONS.map(emoji => (
-                      <button
-                        key={emoji}
-                        className={`emoji-btn ${formData.icon === emoji ? 'active' : ''}`}
-                        onClick={() => {
-                          hapticFeedback('light');
-                          setFormData({ ...formData, icon: emoji });
-                        }}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="form-section">
-                  <label>Цвет</label>
-                  <div className="color-picker">
-                    <input
-                      type="color"
-                      value={formData.color}
-                      onChange={e => setFormData({ ...formData, color: e.target.value })}
-                    />
-                    <span>{formData.color}</span>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <button className="save-btn" onClick={handleSave} disabled={isLoading}>
-              {isLoading ? <Loader className="spin" size={20} /> : <Check size={20} />}
-              {editData ? 'Сохранить' : 'Добавить'}
-            </button>
+            <SubscriptionNotificationSettings settings={formData.notification_settings} onChange={(settings) => setFormData({ ...formData, notification_settings: settings })} />
+            {!isEditing && (<button onClick={() => setShowTemplates(true)} style={{ width: '100%', padding: '16px', background: '#fff', border: 'none', borderRadius: '12px', fontSize: '14px', color: '#667eea', cursor: 'pointer', marginTop: '20px' }}>← Выбрать из шаблонов</button>)}
           </div>
         )}
       </div>
-    </div>
-  );
-};
-
-// ============================================
-// КОМПОНЕНТ: КАЛЕНДАРЬ
-// ============================================
-const CalendarView = ({ subscriptions, currencies }) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDay, setSelectedDay] = useState(null);
-  
-  const getDaysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const days = [];
-    
-    const startDay = firstDay.getDay() || 7;
-    for (let i = 1; i < startDay; i++) {
-      days.push({ date: null, subscriptions: [] });
-    }
-    
-    for (let day = 1; day <= lastDay.getDate(); day++) {
-      const dayDate = new Date(year, month, day);
-      const daySubs = subscriptions.filter(sub => {
-        const nextBilling = calculateNextBillingDate(sub.first_billing_date || sub.firstBillingDate, sub.billing_cycle || sub.billingCycle);
-        return nextBilling.getDate() === day && 
-               nextBilling.getMonth() === month && 
-               nextBilling.getFullYear() === year;
-      });
-      days.push({ date: dayDate, subscriptions: daySubs });
-    }
-    
-    return days;
-  };
-
-  const days = getDaysInMonth(currentMonth);
-  const monthName = currentMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-
-  const monthlyTotal = useMemo(() => {
-    return subscriptions.reduce((total, sub) => {
-      const nextBilling = calculateNextBillingDate(sub.first_billing_date || sub.firstBillingDate, sub.billing_cycle || sub.billingCycle);
-      if (nextBilling.getMonth() === currentMonth.getMonth() && 
-          nextBilling.getFullYear() === currentMonth.getFullYear()) {
-        const currency = currencies.find(c => c.code === sub.currency) || currencies[0];
-        return total + (sub.amount * currency.rate);
-      }
-      return total;
-    }, 0);
-  }, [subscriptions, currentMonth, currencies]);
-
-  const handleDayClick = (day) => {
-    if (day.date && day.subscriptions.length > 0) {
-      hapticFeedback('medium');
-      setSelectedDay(selectedDay?.date?.getTime() === day.date.getTime() ? null : day);
-    }
-  };
-
-  const changeMonth = (delta) => {
-    hapticFeedback('light');
-    const newDate = new Date(currentMonth);
-    newDate.setMonth(newDate.getMonth() + delta);
-    setCurrentMonth(newDate);
-    setSelectedDay(null);
-  };
-
-  return (
-    <div className="calendar-view">
-      <div className="calendar-header">
-        <button onClick={() => changeMonth(-1)}>
-          <ChevronLeft size={20} />
-        </button>
-        <div className="calendar-title">
-          <h3>{monthName}</h3>
-          <span className="month-total">{Math.round(monthlyTotal).toLocaleString('ru-RU')} ₽</span>
-        </div>
-        <button onClick={() => changeMonth(1)}>
-          <ChevronRight size={20} />
-        </button>
-      </div>
-      
-      <div className="calendar-weekdays">
-        {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => (
-          <div key={day} className="weekday">{day}</div>
-        ))}
-      </div>
-      
-      <div className="calendar-grid">
-        {days.map((day, i) => {
-          const isSelected = selectedDay?.date?.getTime() === day.date?.getTime();
-          
-          return (
-            <div 
-              key={i} 
-              className={`calendar-day ${!day.date ? 'empty' : ''} ${day.subscriptions.length > 0 ? 'has-subs' : ''} ${day.date?.toDateString() === new Date().toDateString() ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
-              onClick={() => handleDayClick(day)}
-            >
-              {day.date && (
-                <>
-                  <span className="day-number">{day.date.getDate()}</span>
-                  {day.subscriptions.length > 0 && (
-                    <div className="day-subs">
-                      {day.subscriptions.slice(0, 3).map(sub => (
-                        <div 
-                          key={sub.id} 
-                          className="day-sub-dot" 
-                          style={{ background: sub.color }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {selectedDay && (
-        <div className="day-details">
-          <div className="day-details-header">
-            <h4>{formatDateFull(selectedDay.date)}</h4>
-            <button className="close-details" onClick={() => setSelectedDay(null)}>
-              <X size={18} />
-            </button>
-          </div>
-          <div className="day-details-list">
-            {selectedDay.subscriptions.map(sub => {
-              const currency = currencies.find(c => c.code === sub.currency) || currencies[0];
-              return (
-                <div key={sub.id} className="day-detail-item">
-                  <Logo 
-                    domain={sub.domain} 
-                    emoji={sub.icon} 
-                    color={sub.color}
-                    size={36}
-                  />
-                  <div className="detail-info">
-                    <span className="detail-name">{sub.name}</span>
-                    <span className="detail-category">{sub.category}</span>
-                  </div>
-                  <span className="detail-amount">{sub.amount.toLocaleString('ru-RU')} {currency.symbol}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -786,1443 +662,137 @@ const CalendarView = ({ subscriptions, currencies }) => {
 // ============================================
 // ГЛАВНЫЙ КОМПОНЕНТ
 // ============================================
-export default function SubfyApp() {
-  // Состояния приложения
-  const [appState, setAppState] = useState('loading'); // loading, onboarding, main
+export default function App() {
   const [user, setUser] = useState(null);
-  const [theme, setTheme] = useState('dark');
-  const [activeTab, setActiveTab] = useState('home');
-  const [showForm, setShowForm] = useState(false);
-  const [editingSubscription, setEditingSubscription] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [isDevMode, setIsDevMode] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingSubscription, setEditingSubscription] = useState(null);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [toast, setToast] = useState({ visible: false, message: '' });
 
-  // Инициализация Telegram WebApp
+  const monthlyTotal = useMemo(() => subscriptions.reduce((sum, sub) => sum + getMonthlyAmount(sub.amount, sub.billing_cycle || sub.billingCycle || 'monthly'), 0), [subscriptions]);
+  const yearlyTotal = monthlyTotal * 12;
+
+  const upcomingSubscriptions = useMemo(() => {
+    return [...subscriptions]
+      .map(sub => ({ ...sub, nextBilling: sub.next_billing_date || calculateNextBillingDate(sub.first_billing_date || sub.firstBillingDate, sub.billing_cycle || sub.billingCycle || 'monthly') }))
+      .filter(sub => sub.nextBilling)
+      .sort((a, b) => new Date(a.nextBilling) - new Date(b.nextBilling))
+      .slice(0, 3);
+  }, [subscriptions]);
+
   useEffect(() => {
-    const tg = getTelegram();
-    if (tg) {
-      tg.ready();
-      tg.expand();
-      
-      // Устанавливаем тему из Telegram
-      if (tg.colorScheme === 'light') {
-        setTheme('light');
-      }
-    }
-    
-    initializeApp();
+    const init = async () => {
+      try {
+        const tg = getTelegram();
+        if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#667eea'); tg.setBackgroundColor('#f5f5f5'); }
+        let userId = null, firstName = null;
+        if (tg?.initData) {
+          try {
+            const authResult = await api.auth(tg.initData);
+            if (authResult.user) { userId = authResult.user.id; firstName = authResult.user.first_name || tg.initDataUnsafe?.user?.first_name; }
+          } catch (e) { userId = tg.initDataUnsafe?.user?.id?.toString(); firstName = tg.initDataUnsafe?.user?.first_name; }
+        }
+        if (!userId) { userId = localStorage.getItem('subfy_dev_user_id') || `dev_${Date.now()}`; localStorage.setItem('subfy_dev_user_id', userId); firstName = 'Разработчик'; }
+        setUser({ id: userId, first_name: firstName });
+        if (!localStorage.getItem(`subfy_onboarding_${userId}`)) setShowOnboarding(true);
+        if (API_BASE) {
+          try { const result = await api.getSubscriptions(userId); setSubscriptions(result.subscriptions || []); }
+          catch (e) { const saved = localStorage.getItem(`subfy_subscriptions_${userId}`); if (saved) setSubscriptions(JSON.parse(saved)); }
+        } else { const saved = localStorage.getItem(`subfy_subscriptions_${userId}`); if (saved) setSubscriptions(JSON.parse(saved)); }
+      } catch (error) { console.error('Init error:', error); }
+      finally { setLoading(false); }
+    };
+    init();
   }, []);
 
-  // Инициализация приложения
-  const initializeApp = async () => {
+  useEffect(() => { if (user?.id && subscriptions.length > 0) localStorage.setItem(`subfy_subscriptions_${user.id}`, JSON.stringify(subscriptions)); }, [subscriptions, user]);
+
+  const handleOnboardingComplete = () => { if (user?.id) localStorage.setItem(`subfy_onboarding_${user.id}`, 'true'); setShowOnboarding(false); };
+  const handleAddSubscription = () => { hapticFeedback('medium'); setEditingSubscription(null); setShowEditor(true); };
+  const handleEditSubscription = (sub) => { setEditingSubscription(sub); setShowEditor(true); };
+
+  const handleSaveSubscription = async (data) => {
     try {
-      const tg = getTelegram();
-      const initData = tg?.initData;
-      
-      // Проверяем, проходил ли пользователь онбординг
-      const hasSeenOnboarding = localStorage.getItem('subfy_onboarding_complete');
-      
-      // Режим разработки (нет Telegram или нет API)
-      if (!initData || !SUPABASE_URL) {
-        console.log('Dev mode: using local storage');
-        setIsDevMode(true);
-        
-        // Загружаем подписки из localStorage
-        const savedSubs = localStorage.getItem('subfy_subscriptions');
-        if (savedSubs) {
-          setSubscriptions(JSON.parse(savedSubs));
-        }
-        
-        setUser({ id: 'dev-user', first_name: 'Developer' });
-        setAppState(hasSeenOnboarding ? 'main' : 'onboarding');
-        return;
-      }
-
-      // Авторизация через Telegram
-      const authData = await api.auth(initData);
-      setUser(authData.user);
-
-      // Загружаем подписки из Supabase
-      const { subscriptions: subs } = await api.getSubscriptions(authData.user.id);
-      setSubscriptions(subs || []);
-      
-      setAppState(hasSeenOnboarding ? 'main' : 'onboarding');
-      
-    } catch (err) {
-      console.error('Init error:', err);
-      setError(err.message);
-      
-      // Fallback to dev mode
-      setIsDevMode(true);
-      const savedSubs = localStorage.getItem('subfy_subscriptions');
-      if (savedSubs) {
-        setSubscriptions(JSON.parse(savedSubs));
-      }
-      setUser({ id: 'dev-user', first_name: 'User' });
-      
-      const hasSeenOnboarding = localStorage.getItem('subfy_onboarding_complete');
-      setAppState(hasSeenOnboarding ? 'main' : 'onboarding');
-    }
-  };
-
-  // Сохранение подписки
-  const saveSubscription = async (data) => {
-    setIsLoading(true);
-    
-    try {
-      if (!isDevMode && user?.id) {
-        // Сохраняем через API
-        const { subscription } = await api.saveSubscription(user.id, data);
-        
-        if (editingSubscription) {
-          setSubscriptions(prev => prev.map(s => s.id === subscription.id ? subscription : s));
-        } else {
-          setSubscriptions(prev => [subscription, ...prev]);
+      if (API_BASE && user?.id) {
+        const result = await api.saveSubscription(user.id, data);
+        if (result.subscription) {
+          if (data.id) { setSubscriptions(prev => prev.map(s => s.id === data.id ? result.subscription : s)); setToast({ visible: true, message: 'Подписка сохранена' }); }
+          else { setSubscriptions(prev => [result.subscription, ...prev]); setToast({ visible: true, message: 'Подписка добавлена' }); }
         }
       } else {
-        // Сохраняем в localStorage (dev mode)
-        const newSub = {
-          ...data,
-          id: editingSubscription?.id || `local-${Date.now()}`,
-        };
-        
-        if (editingSubscription) {
-          setSubscriptions(prev => {
-            const updated = prev.map(s => s.id === newSub.id ? newSub : s);
-            localStorage.setItem('subfy_subscriptions', JSON.stringify(updated));
-            return updated;
-          });
-        } else {
-          setSubscriptions(prev => {
-            const updated = [newSub, ...prev];
-            localStorage.setItem('subfy_subscriptions', JSON.stringify(updated));
-            return updated;
-          });
-        }
+        if (data.id) { setSubscriptions(prev => prev.map(s => s.id === data.id ? data : s)); setToast({ visible: true, message: 'Подписка сохранена' }); }
+        else { setSubscriptions(prev => [{ ...data, id: `local_${Date.now()}` }, ...prev]); setToast({ visible: true, message: 'Подписка добавлена' }); }
       }
-      
-      setShowForm(false);
-      setEditingSubscription(null);
-    } catch (err) {
-      console.error('Save error:', err);
-      setError('Ошибка сохранения');
-      hapticNotification('error');
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (error) { setToast({ visible: true, message: 'Ошибка сохранения' }); }
+    setShowEditor(false); setEditingSubscription(null);
   };
 
-  // Удаление подписки
-  const deleteSubscription = async (id) => {
-    try {
-      if (!isDevMode && user?.id) {
-        await api.deleteSubscription(user.id, id);
-      }
-      
-      setSubscriptions(prev => {
-        const updated = prev.filter(s => s.id !== id);
-        localStorage.setItem('subfy_subscriptions', JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.error('Delete error:', err);
-      hapticNotification('error');
-    }
+  const handleDeleteSubscription = (sub) => setDeleteConfirm(sub);
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    try { if (API_BASE && user?.id) await api.deleteSubscription(user.id, deleteConfirm.id); setSubscriptions(prev => prev.filter(s => s.id !== deleteConfirm.id)); setToast({ visible: true, message: 'Подписка удалена' }); }
+    catch (error) { setToast({ visible: true, message: 'Ошибка удаления' }); }
+    setDeleteConfirm(null);
   };
 
-  // Завершение онбординга
-  const handleOnboardingComplete = () => {
-    localStorage.setItem('subfy_onboarding_complete', 'true');
-    hapticNotification('success');
-    setAppState('main');
-  };
-
-  // Статистика
-  const stats = useMemo(() => {
-    let monthlyTotal = 0;
-    
-    subscriptions.forEach(sub => {
-      const cycle = BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
-      const currency = CURRENCIES.find(c => c.code === sub.currency);
-      const amountInRub = sub.amount * (currency?.rate || 1);
-      monthlyTotal += amountInRub * (cycle?.multiplier || 1);
-    });
-
-    return {
-      monthly: Math.round(monthlyTotal),
-      weekly: Math.round(monthlyTotal / 4.33),
-      yearly: Math.round(monthlyTotal * 12),
-      count: subscriptions.length,
-    };
-  }, [subscriptions]);
-
-  // Ближайшие списания
-  const upcomingBillings = useMemo(() => {
-    return subscriptions
-      .map(sub => ({
-        ...sub,
-        nextDate: calculateNextBillingDate(sub.first_billing_date || sub.firstBillingDate, sub.billing_cycle || sub.billingCycle),
-      }))
-      .sort((a, b) => a.nextDate - b.nextDate);
-  }, [subscriptions]);
-
-  // Рендер по состоянию
-  if (appState === 'loading') {
-    return <LoadingScreen message="Подключение..." />;
-  }
-
-  if (appState === 'onboarding') {
-    return (
-      <>
-        <style>{styles}</style>
-        <OnboardingScreen onComplete={handleOnboardingComplete} />
-      </>
-    );
-  }
+  if (loading) return (<div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}><Loader size={40} color="#fff" style={{ animation: 'spin 1s linear infinite' }} /></div>);
+  if (showOnboarding) return <OnboardingScreen onComplete={handleOnboardingComplete} userName={user?.first_name} />;
+  if (showAnalytics) return <AnalyticsScreen subscriptions={subscriptions} onBack={() => setShowAnalytics(false)} />;
+  if (showEditor) return <SubscriptionEditor subscription={editingSubscription} templates={SUBSCRIPTION_TEMPLATES} onSave={handleSaveSubscription} onClose={() => { setShowEditor(false); setEditingSubscription(null); }} />;
 
   return (
-    <div className={`app ${theme}`}>
-      <style>{styles}</style>
-
-      {/* Header */}
-      <header className="app-header">
-        <span className="logo">Subfy</span>
-        <div className="header-actions">
-          <button className="icon-btn" onClick={() => {
-            hapticFeedback();
-            setTheme(theme === 'dark' ? 'light' : 'dark');
-          }}>
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-          <button className="icon-btn primary" onClick={() => {
-            hapticFeedback('medium');
-            setEditingSubscription(null);
-            setShowForm(true);
-          }}>
-            <Plus size={20} />
-          </button>
-        </div>
-      </header>
-
-      {/* Stats Card */}
-      <div className="stats-card">
-        <div className="stats-main">
-          <span className="stats-amount">{stats.monthly.toLocaleString('ru-RU')}</span>
-          <span className="stats-currency">₽</span>
-          <p className="stats-label">в месяц</p>
-        </div>
-        <div className="stats-grid">
-          <div className="stat-item">
-            <div className="stat-value">{stats.weekly.toLocaleString('ru-RU')} ₽</div>
-            <div className="stat-label">в неделю</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-value">{stats.yearly.toLocaleString('ru-RU')} ₽</div>
-            <div className="stat-label">в год</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-value">{stats.count}</div>
-            <div className="stat-label">подписок</div>
+    <div style={{ position: 'fixed', inset: 0, background: '#f5f5f5', overflow: 'auto', paddingBottom: '100px' }}>
+      <div onClick={() => setShowAnalytics(true)} style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '60px 20px 30px', color: '#fff', cursor: 'pointer' }}>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ fontSize: '14px', opacity: 0.8, marginBottom: '8px' }}>Расходы в месяц</p>
+          <h1 style={{ fontSize: '42px', fontWeight: '700', margin: '0 0 8px' }}>{formatMoney(monthlyTotal)}</h1>
+          <p style={{ fontSize: '16px', opacity: 0.9 }}>{formatMoney(yearlyTotal)} в год</p>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '16px', padding: '8px 16px', background: 'rgba(255,255,255,0.2)', borderRadius: '20px', fontSize: '13px' }}>
+            <TrendingUp size={14} />Подробная аналитика<ChevronRight size={14} />
           </div>
         </div>
       </div>
-
-      {/* Tabs */}
-      <div className="view-tabs">
-        <button className={`view-tab ${activeTab === 'home' ? 'active' : ''}`} onClick={() => {
-          hapticFeedback();
-          setActiveTab('home');
-        }}>
-          <CreditCard size={18} />
-          Подписки
-        </button>
-        <button className={`view-tab ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => {
-          hapticFeedback();
-          setActiveTab('calendar');
-        }}>
-          <Calendar size={18} />
-          Календарь
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="content">
-        {activeTab === 'home' ? (
-          <>
-            {upcomingBillings.length > 0 && (
-              <>
-                <div className="section-header">
-                  <h2 className="section-title">Ближайшие списания</h2>
+      {upcomingSubscriptions.length > 0 && (
+        <div style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: '#333' }}>Ближайшие списания</h3>
+          <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '4px' }}>
+            {upcomingSubscriptions.map(sub => {
+              const days = getDaysUntil(sub.nextBilling);
+              return (
+                <div key={sub.id} style={{ minWidth: '140px', background: '#fff', borderRadius: '16px', padding: '16px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: sub.color || '#667eea', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px', fontSize: '20px' }}>{sub.icon || sub.name?.charAt(0) || '📦'}</div>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>{sub.name}</div>
+                  <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px' }}>{formatDateFull(sub.nextBilling)}</div>
+                  <div style={{ fontSize: '16px', fontWeight: '700', color: days !== null && days <= 3 ? '#FF3B30' : '#333' }}>{formatMoney(sub.amount, sub.currency)}</div>
                 </div>
-                <div className="upcoming-list">
-                  {upcomingBillings.slice(0, 3).map(sub => {
-                    const currency = CURRENCIES.find(c => c.code === sub.currency);
-                    const daysUntil = Math.ceil((sub.nextDate - new Date()) / (1000 * 60 * 60 * 24));
-                    return (
-                      <div key={sub.id} className="upcoming-item">
-                        <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} />
-                        <div className="upcoming-info">
-                          <div className="upcoming-name">{sub.name}</div>
-                          <div className="upcoming-date">
-                            {daysUntil === 0 ? 'Сегодня' : daysUntil === 1 ? 'Завтра' : formatDate(sub.nextDate)}
-                          </div>
-                        </div>
-                        <div className="upcoming-amount">{sub.amount} {currency?.symbol}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            <div className="section-header">
-              <h2 className="section-title">Все подписки</h2>
-              <span className="section-count">{subscriptions.length}</span>
-            </div>
-
-            <div className="subscriptions-list">
-              {subscriptions.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-icon">📦</div>
-                  <h3 className="empty-title">Нет подписок</h3>
-                  <p className="empty-text">Добавьте первую подписку</p>
-                  <button className="empty-btn" onClick={() => {
-                    hapticFeedback('medium');
-                    setShowForm(true);
-                  }}>
-                    <Plus size={20} />
-                    Добавить
-                  </button>
-                </div>
-              ) : (
-                subscriptions.map(sub => (
-                  <SubscriptionCard
-                    key={sub.id}
-                    subscription={sub}
-                    onEdit={(s) => {
-                      setEditingSubscription(s);
-                      setShowForm(true);
-                    }}
-                    onDelete={deleteSubscription}
-                    currencies={CURRENCIES}
-                  />
-                ))
-              )}
-            </div>
-          </>
-        ) : (
-          <CalendarView subscriptions={subscriptions} currencies={CURRENCIES} />
-        )}
-      </div>
-
-      {/* Form Modal */}
-      {showForm && (
-        <SubscriptionForm
-          onClose={() => {
-            setShowForm(false);
-            setEditingSubscription(null);
-          }}
-          onSave={saveSubscription}
-          editData={editingSubscription}
-          templates={SUBSCRIPTION_TEMPLATES}
-          isLoading={isLoading}
-        />
+              );
+            })}
+          </div>
+        </div>
       )}
+      <div style={{ padding: '0 20px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#333', margin: 0 }}>Все подписки</h3>
+          <span style={{ fontSize: '14px', color: '#999' }}>{subscriptions.length} {subscriptions.length === 1 ? 'подписка' : 'подписок'}</span>
+        </div>
+        {subscriptions.length === 0 ? (
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '40px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📭</div>
+            <p style={{ color: '#999', marginBottom: '20px' }}>У вас пока нет подписок</p>
+            <button onClick={handleAddSubscription} style={{ padding: '14px 28px', background: '#667eea', color: '#fff', border: 'none', borderRadius: '25px', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}>Добавить первую</button>
+          </div>
+        ) : subscriptions.map(sub => (<SwipeableSubscriptionCard key={sub.id} subscription={sub} onClick={handleEditSubscription} onDelete={handleDeleteSubscription} />))}
+      </div>
+      {subscriptions.length > 0 && (
+        <button onClick={handleAddSubscription} style={{ position: 'fixed', bottom: '30px', right: '20px', width: '60px', height: '60px', borderRadius: '50%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 20px rgba(102, 126, 234, 0.4)' }}><Plus size={28} color="#fff" /></button>
+      )}
+      <Toast message={toast.message} visible={toast.visible} onHide={() => setToast({ ...toast, visible: false })} />
+      <ConfirmModal visible={!!deleteConfirm} title="Удалить подписку?" message={`Вы уверены, что хотите удалить "${deleteConfirm?.name}"?`} onConfirm={confirmDelete} onCancel={() => setDeleteConfirm(null)} />
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes fadeInUp { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } } * { -webkit-tap-highlight-color: transparent; } html, body { overflow: hidden; position: fixed; width: 100%; height: 100%; }`}</style>
     </div>
   );
 }
-
-// ============================================
-// СТИЛИ
-// ============================================
-const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  html, body, #root {
-    height: 100%;
-    overflow: hidden;
-  }
-
-  body {
-    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: var(--bg-primary);
-    overscroll-behavior: none;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-
-  .app {
-    --bg-primary: #0a0a0a;
-    --bg-secondary: #141414;
-    --bg-tertiary: #1a1a1a;
-    --text-primary: #ffffff;
-    --text-secondary: #888888;
-    --accent: #6366f1;
-    --accent-secondary: #8b5cf6;
-    --border: #222222;
-    --danger: #ef4444;
-    
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    max-width: 100%;
-    margin: 0 auto;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    overflow: hidden;
-  }
-
-  .app.light {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f5f5f5;
-    --bg-tertiary: #eeeeee;
-    --text-primary: #0a0a0a;
-    --text-secondary: #666666;
-    --border: #e0e0e0;
-  }
-
-  /* Loading Screen */
-  .loading-screen {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-primary);
-  }
-
-  .loading-content {
-    text-align: center;
-  }
-
-  .loading-logo {
-    font-size: 2rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 24px;
-  }
-
-  .loading-spinner {
-    animation: spin 1s linear infinite;
-    color: var(--accent);
-    margin-bottom: 16px;
-  }
-
-  .loading-message {
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  .spin {
-    animation: spin 1s linear infinite;
-  }
-
-  /* Onboarding */
-  .onboarding {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-
-  .onboarding-slides {
-    flex: 1;
-    overflow: hidden;
-  }
-
-  .slides-track {
-    display: flex;
-    height: 100%;
-    transition: transform 0.3s ease;
-  }
-
-  .slide {
-    min-width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px 32px;
-    text-align: center;
-  }
-
-  .slide-emoji {
-    font-size: 80px;
-    margin-bottom: 32px;
-  }
-
-  .slide-title {
-    font-size: 2rem;
-    font-weight: 800;
-    margin-bottom: 8px;
-  }
-
-  .slide-subtitle {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: var(--accent);
-    margin-bottom: 16px;
-  }
-
-  .slide-description {
-    font-size: 1rem;
-    color: var(--text-secondary);
-    max-width: 280px;
-    line-height: 1.5;
-  }
-
-  .onboarding-footer {
-    padding: 24px 32px;
-    padding-bottom: max(24px, env(safe-area-inset-bottom));
-  }
-
-  .dots {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    margin-bottom: 24px;
-  }
-
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: none;
-    background: var(--border);
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .dot.active {
-    width: 24px;
-    border-radius: 4px;
-    background: var(--accent);
-  }
-
-  .next-btn, .start-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 16px;
-    border: none;
-    border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
-
-  .next-btn {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-  }
-
-  .start-btn {
-    background: var(--accent);
-    color: white;
-  }
-
-  /* Header */
-  .app-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    padding-top: max(12px, env(safe-area-inset-top));
-    background: var(--bg-primary);
-    flex-shrink: 0;
-  }
-
-  .logo {
-    font-size: 1.5rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .icon-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    border: none;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-  }
-
-  .icon-btn:active {
-    transform: scale(0.95);
-  }
-
-  .icon-btn.primary {
-    background: var(--accent);
-    color: white;
-  }
-
-  .icon-btn.delete:active {
-    background: var(--danger);
-    color: white;
-  }
-
-  /* Stats Card */
-  .stats-card {
-    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
-    border-radius: 20px;
-    padding: 20px;
-    margin: 0 16px 16px;
-    color: white;
-    flex-shrink: 0;
-  }
-
-  .stats-main {
-    text-align: center;
-    margin-bottom: 16px;
-  }
-
-  .stats-amount {
-    font-size: 2.5rem;
-    font-weight: 800;
-    line-height: 1;
-  }
-
-  .stats-currency {
-    font-size: 1.25rem;
-    font-weight: 600;
-    opacity: 0.8;
-    margin-left: 4px;
-  }
-
-  .stats-label {
-    font-size: 0.875rem;
-    opacity: 0.8;
-    margin-top: 4px;
-  }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-  }
-
-  .stat-item {
-    text-align: center;
-    padding: 10px 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-  }
-
-  .stat-value {
-    font-size: 0.875rem;
-    font-weight: 700;
-  }
-
-  .stat-label {
-    font-size: 0.625rem;
-    opacity: 0.8;
-    margin-top: 2px;
-  }
-
-  /* Tabs */
-  .view-tabs {
-    display: flex;
-    gap: 8px;
-    margin: 0 16px 16px;
-    background: var(--bg-secondary);
-    padding: 4px;
-    border-radius: 12px;
-    flex-shrink: 0;
-  }
-
-  .view-tab {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 10px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-    font-weight: 600;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .view-tab.active {
-    background: var(--accent);
-    color: white;
-  }
-
-  /* Content */
-  .content {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 0 16px 16px;
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* Sections */
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
-
-  .section-title {
-    font-size: 1rem;
-    font-weight: 700;
-  }
-
-  .section-count {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    background: var(--bg-secondary);
-    padding: 4px 10px;
-    border-radius: 20px;
-  }
-
-  /* Upcoming List */
-  .upcoming-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 20px;
-  }
-
-  .upcoming-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    background: var(--bg-secondary);
-    border-radius: 12px;
-  }
-
-  .upcoming-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .upcoming-name {
-    font-weight: 600;
-    font-size: 0.875rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .upcoming-date {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-  }
-
-  .upcoming-amount {
-    font-weight: 700;
-    font-size: 0.875rem;
-    flex-shrink: 0;
-  }
-
-  /* Subscription Cards */
-  .subscriptions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .sub-card {
-    background: var(--bg-secondary);
-    border-radius: 16px;
-    overflow: hidden;
-    display: flex;
-  }
-
-  .sub-card-accent {
-    width: 4px;
-    background: var(--accent);
-    flex-shrink: 0;
-  }
-
-  .sub-card-content {
-    flex: 1;
-    padding: 14px;
-    min-width: 0;
-  }
-
-  .sub-card-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-
-  .sub-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .sub-name {
-    font-size: 0.9375rem;
-    font-weight: 700;
-    margin-bottom: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .sub-category {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-  }
-
-  .sub-actions {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-
-  .sub-actions .icon-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-  }
-
-  .sub-card-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .sub-price {
-    display: flex;
-    align-items: baseline;
-    gap: 2px;
-  }
-
-  .price-amount {
-    font-size: 1.125rem;
-    font-weight: 800;
-  }
-
-  .price-currency {
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  .price-cycle {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    margin-left: 2px;
-  }
-
-  .sub-next {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    background: var(--bg-tertiary);
-    padding: 6px 10px;
-    border-radius: 20px;
-    flex-shrink: 0;
-  }
-
-  .sub-next.soon {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--danger);
-  }
-
-  /* Empty State */
-  .empty-state {
-    text-align: center;
-    padding: 48px 32px;
-  }
-
-  .empty-icon {
-    font-size: 3rem;
-    margin-bottom: 16px;
-  }
-
-  .empty-title {
-    font-size: 1.125rem;
-    font-weight: 700;
-    margin-bottom: 8px;
-  }
-
-  .empty-text {
-    color: var(--text-secondary);
-    margin-bottom: 20px;
-    font-size: 0.875rem;
-  }
-
-  .empty-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 24px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  /* Modal */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .modal {
-    background: var(--bg-primary);
-    border-radius: 24px 24px 0 0;
-    width: 100%;
-    max-height: 90vh;
-    max-height: 90dvh;
-    overflow-y: auto;
-    animation: slideUp 0.3s ease;
-  }
-
-  @keyframes slideUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
-  }
-
-  .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    background: var(--bg-primary);
-    z-index: 10;
-  }
-
-  .modal-header h2 {
-    font-size: 1rem;
-    font-weight: 700;
-  }
-
-  .back-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: none;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Template Selector */
-  .template-selector {
-    padding: 16px;
-  }
-
-  .search-box {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    margin-bottom: 16px;
-  }
-
-  .search-box input {
-    flex: 1;
-    border: none;
-    background: transparent;
-    font-size: 1rem;
-    color: var(--text-primary);
-    outline: none;
-  }
-
-  .search-box svg {
-    color: var(--text-secondary);
-    flex-shrink: 0;
-  }
-
-  .category-tabs {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 12px;
-    margin-bottom: 8px;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .category-tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .cat-tab {
-    padding: 8px 14px;
-    border: none;
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    border-radius: 20px;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .cat-tab.active {
-    background: var(--accent);
-    color: white;
-  }
-
-  .template-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-
-  .template-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 12px 6px;
-    background: var(--bg-secondary);
-    border: 2px solid transparent;
-    border-radius: 14px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .template-item:active {
-    transform: scale(0.97);
-  }
-
-  .template-item.custom {
-    border: 2px dashed var(--border);
-  }
-
-  .template-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-  }
-
-  .template-item span {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    text-align: center;
-    line-height: 1.2;
-  }
-
-  /* Subscription Form */
-  .subscription-form {
-    padding: 16px;
-  }
-
-  .form-preview {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 16px;
-    background: var(--bg-secondary);
-    border-radius: 14px;
-    margin-bottom: 20px;
-  }
-
-  .preview-info h3 {
-    font-size: 1.125rem;
-    font-weight: 700;
-  }
-
-  .preview-info p {
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-  }
-
-  .form-section {
-    margin-bottom: 16px;
-  }
-
-  .form-section label {
-    display: block;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 8px;
-  }
-
-  .form-section input,
-  .form-section select {
-    width: 100%;
-    padding: 12px 14px;
-    background: var(--bg-secondary);
-    border: 2px solid var(--border);
-    border-radius: 12px;
-    font-size: 1rem;
-    color: var(--text-primary);
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .form-section input:focus,
-  .form-section select:focus {
-    border-color: var(--accent);
-  }
-
-  .form-row {
-    display: flex;
-    gap: 12px;
-  }
-
-  .flex-1 {
-    flex: 1;
-  }
-
-  .currency-selector {
-    display: flex;
-    gap: 8px;
-  }
-
-  .currency-btn {
-    flex: 1;
-    padding: 12px;
-    border: 2px solid var(--border);
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    cursor: pointer;
-  }
-
-  .currency-btn.active {
-    border-color: var(--accent);
-    background: rgba(99, 102, 241, 0.1);
-  }
-
-  .cycle-selector {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-
-  .cycle-btn {
-    padding: 12px 8px;
-    border: 2px solid var(--border);
-    background: var(--bg-secondary);
-    border-radius: 10px;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    cursor: pointer;
-  }
-
-  .cycle-btn.active {
-    border-color: var(--accent);
-    background: rgba(99, 102, 241, 0.1);
-  }
-
-  .emoji-selector {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .emoji-btn {
-    width: 40px;
-    height: 40px;
-    border: 2px solid var(--border);
-    background: var(--bg-secondary);
-    border-radius: 10px;
-    font-size: 1.125rem;
-    cursor: pointer;
-  }
-
-  .emoji-btn.active {
-    border-color: var(--accent);
-    background: rgba(99, 102, 241, 0.1);
-  }
-
-  .color-picker {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .color-picker input[type="color"] {
-    width: 48px;
-    height: 48px;
-    padding: 4px;
-    border-radius: 10px;
-    cursor: pointer;
-  }
-
-  .color-picker span {
-    font-family: monospace;
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-  }
-
-  .save-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 14px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 700;
-    cursor: pointer;
-    margin-top: 20px;
-  }
-
-  .save-btn:disabled {
-    opacity: 0.6;
-  }
-
-  /* Calendar */
-  .calendar-view {
-    padding-bottom: 16px;
-  }
-
-  .calendar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-  }
-
-  .calendar-header button {
-    width: 36px;
-    height: 36px;
-    border: none;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border-radius: 10px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .calendar-title {
-    text-align: center;
-  }
-
-  .calendar-title h3 {
-    font-size: 1rem;
-    font-weight: 700;
-    text-transform: capitalize;
-  }
-
-  .month-total {
-    font-size: 0.8125rem;
-    color: var(--accent);
-    font-weight: 600;
-  }
-
-  .calendar-weekdays {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
-    margin-bottom: 8px;
-  }
-
-  .weekday {
-    text-align: center;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    padding: 6px 0;
-  }
-
-  .calendar-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
-  }
-
-  .calendar-day {
-    aspect-ratio: 1;
-    background: var(--bg-secondary);
-    border-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    cursor: default;
-  }
-
-  .calendar-day.empty {
-    background: transparent;
-  }
-
-  .calendar-day.today {
-    border: 2px solid var(--accent);
-  }
-
-  .calendar-day.has-subs {
-    background: var(--bg-tertiary);
-    cursor: pointer;
-  }
-
-  .calendar-day.has-subs:active {
-    transform: scale(0.95);
-  }
-
-  .calendar-day.selected {
-    background: var(--accent);
-    color: white;
-  }
-
-  .day-number {
-    font-size: 0.8125rem;
-    font-weight: 600;
-  }
-
-  .day-subs {
-    display: flex;
-    gap: 2px;
-    margin-top: 2px;
-  }
-
-  .day-sub-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-  }
-
-  /* Day Details */
-  .day-details {
-    background: var(--bg-secondary);
-    border-radius: 14px;
-    padding: 14px;
-    margin-top: 16px;
-    animation: fadeIn 0.2s ease;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .day-details-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-  }
-
-  .day-details-header h4 {
-    font-size: 0.9375rem;
-    font-weight: 700;
-    text-transform: capitalize;
-  }
-
-  .close-details {
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .day-details-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .day-detail-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px;
-    background: var(--bg-tertiary);
-    border-radius: 10px;
-  }
-
-  .detail-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .detail-name {
-    display: block;
-    font-weight: 600;
-    font-size: 0.875rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .detail-category {
-    font-size: 0.6875rem;
-    color: var(--text-secondary);
-  }
-
-  .detail-amount {
-    font-weight: 700;
-    font-size: 0.875rem;
-    flex-shrink: 0;
-  }
-`;
