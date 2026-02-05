@@ -526,19 +526,23 @@ const PeriodModal = ({ visible, onSelect, onClose, currentValue }) => {
 // ============================================
 // КОМПОНЕНТ: ФОРМА ПОДПИСКИ
 // ============================================
-const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, defaultNotificationSettings }) => {
+const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, defaultNotificationSettings, customCategories = [], onAddCategory }) => {
   const [step, setStep] = useState(editData ? 2 : 1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Все');
   const [showPeriodModal, setShowPeriodModal] = useState(false);
+  const [showCustomCategoryInput, setShowCustomCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Combine default and custom categories
+  const allCategories = [...CATEGORIES.filter(c => c.id !== 'other'), ...customCategories, CATEGORIES.find(c => c.id === 'other')];
   
   const [formData, setFormData] = useState(editData ? {
     ...editData,
     firstBillingDate: editData.first_billing_date || editData.firstBillingDate,
     billingCycle: editData.billing_cycle || editData.billingCycle || 'monthly',
     category: editData.category || 'Другое',
-    paymentMethod: editData.payment_method || editData.paymentMethod || '',
-    notifyEnabled: editData.notify_enabled ?? true,
+    notifyEnabled: editData.notify_enabled ?? false,
     notifyDaysBefore: editData.notify_days_before ?? defaultNotificationSettings.daysBefore,
     notifyOnDay: editData.notify_on_day ?? defaultNotificationSettings.notifyOnDay,
     notifyTime: editData.notify_time ?? defaultNotificationSettings.time,
@@ -553,8 +557,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     icon: '📦',
     domain: null,
     isCustom: true,
-    paymentMethod: '',
-    notifyEnabled: true,
+    notifyEnabled: false,
     notifyDaysBefore: defaultNotificationSettings.daysBefore,
     notifyOnDay: defaultNotificationSettings.notifyOnDay,
     notifyTime: defaultNotificationSettings.time,
@@ -592,7 +595,6 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
       amount: parseFloat(formData.amount),
       first_billing_date: formData.firstBillingDate,
       billing_cycle: formData.billingCycle,
-      payment_method: formData.paymentMethod,
       notify_enabled: formData.notifyEnabled,
       notify_days_before: formData.notifyDaysBefore,
       notify_on_day: formData.notifyOnDay,
@@ -683,24 +685,22 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               </div>
             )}
 
-            <div className="form-row">
-              <div className="form-section flex-1">
-                <label>Сумма</label>
+            <div className="form-section">
+              <label>Сумма</label>
+              <div className="amount-row">
                 <input
                   type="number"
                   inputMode="decimal"
+                  className="amount-input"
                   value={formData.amount}
                   onChange={e => setFormData({ ...formData, amount: e.target.value })}
                   placeholder="299"
                 />
-              </div>
-              <div className="form-section">
-                <label>Валюта</label>
-                <div className="currency-selector">
+                <div className="currency-selector-compact">
                   {CURRENCIES.map(cur => (
                     <button
                       key={cur.code}
-                      className={`currency-btn ${formData.currency === cur.code ? 'active' : ''}`}
+                      className={`currency-btn-sm ${formData.currency === cur.code ? 'active' : ''}`}
                       onClick={() => setFormData({ ...formData, currency: cur.code })}
                     >
                       {cur.symbol}
@@ -744,27 +744,50 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
             <div className="form-section">
               <label>Категория</label>
               <div className="category-selector">
-                {CATEGORIES.map(cat => (
+                {allCategories.map(cat => (
                   <button
                     key={cat.id}
                     className={`category-btn ${formData.category === cat.name ? 'active' : ''}`}
                     style={{ '--cat-color': cat.color }}
-                    onClick={() => setFormData({ ...formData, category: cat.name })}
+                    onClick={() => {
+                      if (cat.id === 'other') {
+                        setShowCustomCategoryInput(true);
+                      } else {
+                        setFormData({ ...formData, category: cat.name });
+                        setShowCustomCategoryInput(false);
+                      }
+                    }}
                   >
                     {cat.name}
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div className="form-section">
-              <label>Способ оплаты (опционально)</label>
-              <input
-                type="text"
-                value={formData.paymentMethod}
-                onChange={e => setFormData({ ...formData, paymentMethod: e.target.value })}
-                placeholder="Например: Тинькофф *1234"
-              />
+              {showCustomCategoryInput && (
+                <div className="custom-category-input">
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    placeholder="Введите название категории"
+                    autoFocus
+                  />
+                  <button
+                    className="add-category-btn"
+                    onClick={() => {
+                      if (newCategoryName.trim()) {
+                        const trimmedName = newCategoryName.trim();
+                        onAddCategory && onAddCategory(trimmedName);
+                        setFormData({ ...formData, category: trimmedName });
+                        setNewCategoryName('');
+                        setShowCustomCategoryInput(false);
+                      }
+                    }}
+                    disabled={!newCategoryName.trim()}
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Блок уведомлений */}
@@ -1082,13 +1105,16 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
 // ============================================
 // КОМПОНЕНТ: ЭКРАН НАСТРОЕК
 // ============================================
-const SettingsScreen = ({ settings, onUpdateSettings, onClose }) => {
-  const [localSettings, setLocalSettings] = useState(settings);
+const SettingsScreen = ({ user, onClose }) => {
+  const tg = getTelegram();
+  const telegramUser = tg?.initDataUnsafe?.user;
 
-  const handleSave = () => {
-    onUpdateSettings(localSettings);
-    onClose();
-  };
+  // Get user photo URL from Telegram
+  const photoUrl = telegramUser?.photo_url || null;
+  const displayName = telegramUser?.first_name
+    ? `${telegramUser.first_name}${telegramUser.last_name ? ' ' + telegramUser.last_name : ''}`
+    : user?.first_name || 'Пользователь';
+  const telegramId = telegramUser?.id || user?.telegram_id || user?.id || '—';
 
   return (
     <div className="settings-screen">
@@ -1096,126 +1122,24 @@ const SettingsScreen = ({ settings, onUpdateSettings, onClose }) => {
         <button className="back-btn" onClick={onClose}>
           <ArrowLeft size={20} />
         </button>
-        <h2>Настройки</h2>
-        <button className="save-text-btn" onClick={handleSave}>Готово</button>
+        <h2>Профиль</h2>
+        <div style={{ width: 32 }} />
       </div>
 
       <div className="settings-content">
-        {/* Уведомления */}
-        <div className="settings-section">
-          <h3><Bell size={18} /> Уведомления</h3>
-          
-          <div className="setting-row">
-            <div className="setting-info">
-              <span className="setting-title">Все уведомления</span>
-              <span className="setting-desc">Включить или выключить все уведомления</span>
-            </div>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={localSettings.notificationsEnabled}
-                onChange={e => setLocalSettings({ ...localSettings, notificationsEnabled: e.target.checked })}
-              />
-              <span className="toggle-slider"></span>
-            </label>
+        {/* User Profile */}
+        <div className="profile-section">
+          <div className="profile-avatar">
+            {photoUrl ? (
+              <img src={photoUrl} alt="Avatar" />
+            ) : (
+              <div className="avatar-placeholder">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            )}
           </div>
-
-          {localSettings.notificationsEnabled && (
-            <>
-              <div className="settings-subsection">
-                <h4>Настройки по умолчанию для новых подписок</h4>
-                
-                <div className="setting-select">
-                  <label>Напоминать за</label>
-                  <select 
-                    value={localSettings.defaultDaysBefore}
-                    onChange={e => setLocalSettings({ ...localSettings, defaultDaysBefore: parseInt(e.target.value) })}
-                  >
-                    {REMINDER_DAYS.map(day => (
-                      <option key={day.value} value={day.value}>{day.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="setting-row">
-                  <span>Напоминать в день списания</span>
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={localSettings.defaultNotifyOnDay}
-                      onChange={e => setLocalSettings({ ...localSettings, defaultNotifyOnDay: e.target.checked })}
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
-                </div>
-
-                <div className="setting-select">
-                  <label>Время уведомлений</label>
-                  <select 
-                    value={localSettings.defaultTime}
-                    onChange={e => setLocalSettings({ ...localSettings, defaultTime: e.target.value })}
-                  >
-                    {REMINDER_TIMES.map(time => (
-                      <option key={time.value} value={time.value}>{time.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="settings-subsection">
-                <h4>Тихие часы</h4>
-                
-                <div className="setting-row">
-                  <div className="setting-info">
-                    <span className="setting-title"><BellOff size={16} /> Тихие часы</span>
-                    <span className="setting-desc">Не показывать уведомления в указанный период</span>
-                  </div>
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={localSettings.quietHoursEnabled}
-                      onChange={e => setLocalSettings({ ...localSettings, quietHoursEnabled: e.target.checked })}
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
-                </div>
-
-                {localSettings.quietHoursEnabled && (
-                  <div className="quiet-hours-time">
-                    <div className="time-input">
-                      <label>С</label>
-                      <input
-                        type="time"
-                        value={localSettings.quietHoursStart}
-                        onChange={e => setLocalSettings({ ...localSettings, quietHoursStart: e.target.value })}
-                      />
-                    </div>
-                    <div className="time-input">
-                      <label>До</label>
-                      <input
-                        type="time"
-                        value={localSettings.quietHoursEnd}
-                        onChange={e => setLocalSettings({ ...localSettings, quietHoursEnd: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          <button 
-            className="system-settings-link"
-            onClick={() => {
-              // Попытка открыть системные настройки (работает на iOS/Android)
-              if (getTelegram()?.openLink) {
-                getTelegram().openLink('app-settings:');
-              }
-            }}
-          >
-            <ExternalLink size={16} />
-            Системные настройки уведомлений
-          </button>
+          <h3 className="profile-name">{displayName}</h3>
+          <span className="profile-id">ID: {telegramId}</span>
         </div>
       </div>
     </div>
@@ -1386,6 +1310,33 @@ export default function SubfyApp() {
       quietHoursEnd: '08:00',
     };
   });
+
+  // Custom categories state
+  const [customCategories, setCustomCategories] = useState(() => {
+    const saved = localStorage.getItem('subfy_custom_categories');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Function to generate a random color for new categories
+  const generateCategoryColor = () => {
+    const colors = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#14B8A6', '#0EA5E9', '#8B5CF6', '#EC4899'];
+    return colors[Math.floor(Math.random() * colors.length)];
+  };
+
+  // Add a new custom category
+  const addCustomCategory = (name) => {
+    const newCategory = {
+      id: `custom-${Date.now()}`,
+      name,
+      color: generateCategoryColor(),
+      isCustom: true,
+    };
+    setCustomCategories(prev => {
+      const updated = [...prev, newCategory];
+      localStorage.setItem('subfy_custom_categories', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Сохранение настроек
   useEffect(() => {
@@ -1561,9 +1512,8 @@ export default function SubfyApp() {
     return (
       <div className={`app ${theme}`}>
         <style>{styles}</style>
-        <SettingsScreen 
-          settings={appSettings}
-          onUpdateSettings={setAppSettings}
+        <SettingsScreen
+          user={user}
           onClose={() => setShowSettings(false)}
         />
       </div>
@@ -1698,6 +1648,8 @@ export default function SubfyApp() {
           templates={SUBSCRIPTION_TEMPLATES}
           isLoading={isLoading}
           defaultNotificationSettings={defaultNotificationSettings}
+          customCategories={customCategories}
+          onAddCategory={addCustomCategory}
         />
       )}
 
@@ -2391,8 +2343,68 @@ const styles = `
   .form-section input:focus,
   .form-section select:focus { border-color: var(--accent); }
 
+  /* Date input fix for iOS */
+  .form-section input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 44px;
+    max-height: 48px;
+    line-height: 1.2;
+  }
+
+  .form-section input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+  }
+
   .form-row { display: flex; gap: 12px; }
   .flex-1 { flex: 1; }
+
+  /* Amount input with compact currency selector */
+  .amount-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .amount-input {
+    flex: 1;
+    padding: 16px 18px;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .amount-input:focus { border-color: var(--accent); }
+  .amount-input::placeholder { color: var(--text-secondary); font-weight: 500; }
+
+  .currency-selector-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .currency-btn-sm {
+    padding: 8px 12px;
+    border: 1.5px solid var(--border);
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .currency-btn-sm.active {
+    border-color: var(--accent);
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--accent);
+  }
 
   .currency-selector { display: flex; gap: 8px; }
 
@@ -2463,10 +2475,43 @@ const styles = `
     cursor: pointer;
   }
 
-  .category-btn.active { 
-    border-color: var(--cat-color, var(--accent)); 
+  .category-btn.active {
+    border-color: var(--cat-color, var(--accent));
     background: color-mix(in srgb, var(--cat-color, var(--accent)) 15%, transparent);
   }
+
+  .custom-category-input {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .custom-category-input input {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    outline: none;
+  }
+
+  .custom-category-input input:focus { border-color: var(--accent); }
+
+  .add-category-btn {
+    padding: 10px 14px;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .add-category-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* Notification Section */
   .notification-section {
@@ -2683,6 +2728,56 @@ const styles = `
     overflow-y: auto;
     padding: 16px;
     padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  /* Profile Section */
+  .profile-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 20px;
+    background: var(--bg-secondary);
+    border-radius: 20px;
+  }
+
+  .profile-avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-bottom: 16px;
+    background: var(--accent);
+  }
+
+  .profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: white;
+    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+  }
+
+  .profile-name {
+    font-size: 1.375rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .profile-id {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-family: monospace;
   }
 
   .analytics-summary {
