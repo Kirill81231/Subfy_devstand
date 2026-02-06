@@ -120,6 +120,36 @@ const calculateNextBillingDate = (firstDate, cycle) => {
   return date;
 };
 
+const getBillingDatesInMonth = (startDate, cycle, year, month) => {
+  if (!startDate) return [];
+  const date = new Date(startDate);
+  if (isNaN(date.getTime())) return [];
+
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+  const dates = [];
+
+  const advance = (d, c) => {
+    switch (c) {
+      case 'weekly': d.setDate(d.getDate() + 7); break;
+      case 'biweekly': d.setDate(d.getDate() + 14); break;
+      case 'monthly': d.setMonth(d.getMonth() + 1); break;
+      case 'quarterly': d.setMonth(d.getMonth() + 3); break;
+      case 'semiannual': d.setMonth(d.getMonth() + 6); break;
+      case 'yearly': d.setFullYear(d.getFullYear() + 1); break;
+      default: d.setMonth(d.getMonth() + 1);
+    }
+  };
+
+  while (date < monthStart) advance(date, cycle);
+  while (date <= monthEnd) {
+    if (date >= monthStart) dates.push(new Date(date));
+    advance(date, cycle);
+  }
+
+  return dates;
+};
+
 const formatDate = (date) => {
   if (!date || isNaN(new Date(date).getTime())) return 'дата не указана';
   return new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
@@ -415,7 +445,7 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
   
   const currency = currencies.find(c => c.code === subscription.currency) || currencies[0];
   const billingCycle = subscription.billing_cycle || subscription.billingCycle || 'monthly';
-  const firstDate = subscription.first_billing_date || subscription.firstBillingDate;
+  const firstDate = subscription.first_billing_date || subscription.next_billing_date || subscription.firstBillingDate;
   const nextDate = calculateNextBillingDate(firstDate, billingCycle);
   const daysUntil = getDaysUntil(nextDate);
   const cycle = ALL_BILLING_CYCLES.find(c => c.value === billingCycle) || ALL_BILLING_CYCLES[0];
@@ -1194,14 +1224,10 @@ const CalendarView = ({ subscriptions, currencies }) => {
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const dayDate = new Date(year, month, day);
       const daySubs = subscriptions.filter(sub => {
-        const nextBilling = calculateNextBillingDate(
-          sub.first_billing_date || sub.firstBillingDate, 
-          sub.billing_cycle || sub.billingCycle
-        );
-        return nextBilling && 
-               nextBilling.getDate() === day && 
-               nextBilling.getMonth() === month && 
-               nextBilling.getFullYear() === year;
+        const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
+        const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
+        const billingDates = getBillingDatesInMonth(startDate, cycle, year, month);
+        return billingDates.some(d => d.getDate() === day);
       });
       days.push({ date: dayDate, subscriptions: daySubs });
     }
@@ -1213,16 +1239,15 @@ const CalendarView = ({ subscriptions, currencies }) => {
   const monthName = currentMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 
   const monthlyTotal = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
     return subscriptions.reduce((total, sub) => {
-      const nextBilling = calculateNextBillingDate(
-        sub.first_billing_date || sub.firstBillingDate, 
-        sub.billing_cycle || sub.billingCycle
-      );
-      if (nextBilling && 
-          nextBilling.getMonth() === currentMonth.getMonth() && 
-          nextBilling.getFullYear() === currentMonth.getFullYear()) {
+      const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
+      const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
+      const dates = getBillingDatesInMonth(startDate, cycle, year, month);
+      if (dates.length > 0) {
         const currency = currencies.find(c => c.code === sub.currency) || currencies[0];
-        return total + (sub.amount * currency.rate);
+        return total + (sub.amount * currency.rate * dates.length);
       }
       return total;
     }, 0);
@@ -1536,7 +1561,7 @@ export default function SubfyApp() {
       .map(sub => ({
         ...sub,
         nextDate: calculateNextBillingDate(
-          sub.first_billing_date || sub.firstBillingDate, 
+          sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate,
           sub.billing_cycle || sub.billingCycle
         ),
       }))
@@ -1867,7 +1892,7 @@ const styles = `
   .onboarding-slides {
     flex: 1;
     overflow: hidden;
-    padding-top: calc(max(env(safe-area-inset-top), var(--tg-content-safe-area-top), var(--tg-safe-area-top)));
+    padding-top: calc(var(--tg-safe-area-top) + var(--tg-content-safe-area-top));
   }
 
   .slides-track {
@@ -1893,7 +1918,7 @@ const styles = `
 
   .onboarding-footer {
     padding: 24px 32px;
-    padding-bottom: calc(24px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(24px + var(--tg-safe-area-bottom));
   }
 
   .dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 24px; }
@@ -1937,7 +1962,7 @@ const styles = `
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    padding-top: calc(12px + max(env(safe-area-inset-top), var(--tg-content-safe-area-top), var(--tg-safe-area-top)));
+    padding-top: calc(12px + var(--tg-safe-area-top) + var(--tg-content-safe-area-top));
     background: var(--bg-primary);
     flex-shrink: 0;
   }
@@ -2040,7 +2065,7 @@ const styles = `
     overflow-y: auto;
     overflow-x: hidden;
     padding: 0 16px 16px;
-    padding-bottom: calc(16px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom));
     -webkit-overflow-scrolling: touch;
   }
 
@@ -2261,7 +2286,7 @@ const styles = `
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    padding-top: calc(16px + max(env(safe-area-inset-top), var(--tg-content-safe-area-top), var(--tg-safe-area-top)));
+    padding-top: calc(16px + var(--tg-safe-area-top) + var(--tg-content-safe-area-top));
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
@@ -2288,7 +2313,7 @@ const styles = `
   /* Template Selector */
   .template-selector {
     padding: 16px;
-    padding-bottom: calc(16px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom));
     overflow-y: auto;
     flex: 1;
   }
@@ -2376,7 +2401,7 @@ const styles = `
   /* Subscription Form */
   .subscription-form {
     padding: 16px;
-    padding-bottom: calc(16px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom));
     overflow-y: auto;
     overflow-x: hidden;
     flex: 1;
@@ -2731,7 +2756,7 @@ const styles = `
     background: var(--bg-secondary);
     border-radius: 20px 20px 0 0;
     width: 100%;
-    padding-bottom: calc(20px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(20px + var(--tg-safe-area-bottom));
   }
 
   .period-modal-header {
@@ -2787,7 +2812,7 @@ const styles = `
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    padding-top: calc(12px + max(env(safe-area-inset-top), var(--tg-content-safe-area-top), var(--tg-safe-area-top)));
+    padding-top: calc(12px + var(--tg-safe-area-top) + var(--tg-content-safe-area-top));
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
@@ -2807,7 +2832,7 @@ const styles = `
     flex: 1;
     overflow-y: auto;
     padding: 16px;
-    padding-bottom: calc(16px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom));
   }
 
   /* Profile Section */
