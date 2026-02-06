@@ -2512,17 +2512,6 @@ const styles = `
 
   .sub-next.soon { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
 
-  /* Confirm Overlay - centered */
-  .confirm-overlay {
-    align-items: center;
-    animation: fadeOverlayIn 0.2s ease;
-  }
-
-  @keyframes fadeOverlayIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
   /* Confirm Modal */
   .confirm-modal {
     background: var(--bg-secondary);
@@ -2586,6 +2575,16 @@ const styles = `
     align-items: stretch;
     justify-content: center;
     z-index: 1000;
+  }
+
+  .modal-overlay.confirm-overlay {
+    align-items: center;
+    animation: fadeOverlayIn 0.2s ease;
+  }
+
+  @keyframes fadeOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   .modal {
