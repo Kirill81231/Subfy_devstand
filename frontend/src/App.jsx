@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Plus, X, Calendar, ChevronRight, ChevronLeft, Sun, Moon, Search, Check, Trash2, Edit3, Bell, CreditCard, Loader, Settings, TrendingUp, PieChart, ArrowLeft, BellOff, Clock, ExternalLink } from 'lucide-react';
+import { Plus, X, Calendar, ChevronRight, ChevronLeft, Sun, Moon, Search, Check, Trash2, Edit3, Bell, CreditCard, Loader, Settings, TrendingUp, PieChart, ArrowLeft, BellOff, Clock, ExternalLink, Camera } from 'lucide-react';
 
 // ============================================
 // КОНФИГУРАЦИЯ
@@ -586,6 +586,13 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   const [showPeriodModal, setShowPeriodModal] = useState(false);
   const [showCustomCategoryInput, setShowCustomCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [isClosing, setIsClosing] = useState(false);
+  const [showLogoPicker, setShowLogoPicker] = useState(false);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => onClose(), 280);
+  };
 
   // Combine default and custom categories
   const allCategories = [...CATEGORIES.filter(c => c.id !== 'other'), ...customCategories, CATEGORIES.find(c => c.id === 'other')];
@@ -670,10 +677,10 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal subscription-modal" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={handleClose}>
+      <div className={`modal subscription-modal ${isClosing ? 'closing' : ''}`} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <button className="back-btn" onClick={() => step === 1 ? onClose() : setStep(1)}>
+          <button className="back-btn" onClick={() => step === 1 ? handleClose() : setStep(1)}>
             {step === 1 ? <X size={20} /> : <ChevronLeft size={20} />}
           </button>
           <h2>{editData ? 'Редактировать' : step === 1 ? 'Выберите сервис' : 'Настройка'}</h2>
@@ -682,52 +689,100 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
 
         {step === 1 ? (
           <div className="template-selector">
-            <div className="search-box">
-              <Search size={18} />
-              <input
-                type="text"
-                placeholder="Поиск сервиса..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-            </div>
-            
-            <div className="category-tabs">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  className={`cat-tab ${selectedCategory === cat ? 'active' : ''}`}
-                  onClick={() => setSelectedCategory(cat)}
-                >
-                  {cat}
-                </button>
-              ))}
+            <div className="template-selector-sticky">
+              <div className="search-box">
+                <Search size={18} />
+                <input
+                  type="text"
+                  placeholder="Поиск сервиса..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div className="category-tabs">
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    className={`cat-tab ${selectedCategory === cat ? 'active' : ''}`}
+                    onClick={() => setSelectedCategory(cat)}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="template-grid">
-              <button className="template-item custom" onClick={() => setStep(2)}>
-                <div className="template-icon" style={{ background: '#6366f1' }}>
-                  <Plus size={24} color="white" />
+            <div className="template-selector-scroll">
+              <button className="custom-sub-btn" onClick={() => setStep(2)}>
+                <div className="custom-sub-icon">
+                  <Plus size={22} color="white" />
                 </div>
-                <span>Своя</span>
+                <span>Своя подписка</span>
+                <ChevronRight size={18} className="custom-sub-chevron" />
               </button>
-              {filteredTemplates.map(template => (
-                <button key={template.id} className="template-item" onClick={() => selectTemplate(template)}>
-                  <Logo domain={template.domain} emoji={template.icon} color={template.color} size={40} logoUrl={template.logo_url} />
-                  <span>{template.name}</span>
-                </button>
-              ))}
+
+              <div className="template-divider">
+                <span>Или выберите из шаблонов</span>
+              </div>
+
+              <div className="template-grid">
+                {filteredTemplates.map(template => (
+                  <button key={template.id} className="template-item" onClick={() => selectTemplate(template)}>
+                    <Logo domain={template.domain} emoji={template.icon} color={template.color} size={40} logoUrl={template.logo_url} />
+                    <span>{template.name}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
           <div className="subscription-form">
             <div className="form-preview">
-              <Logo domain={formData.domain} emoji={formData.icon} color={formData.color} size={56} logoUrl={formData.logo_url} />
+              <div className="form-logo-btn" onClick={() => setShowLogoPicker(!showLogoPicker)}>
+                <Logo domain={formData.domain} emoji={formData.icon} color={formData.color} size={56} logoUrl={formData.logo_url} />
+                <div className="logo-edit-badge"><Edit3 size={12} /></div>
+              </div>
               <div className="preview-info">
                 <h3>{formData.name || 'Название'}</h3>
                 <p>{formData.amount ? `${formData.amount} ${CURRENCIES.find(c => c.code === formData.currency)?.symbol}` : '0 ₽'}</p>
               </div>
             </div>
+
+            {showLogoPicker && (
+              <div className="logo-picker">
+                <div className="form-section">
+                  <label>Иконка</label>
+                  <div className="emoji-selector">
+                    {EMOJI_OPTIONS.map(emoji => (
+                      <button
+                        key={emoji}
+                        className={`emoji-btn ${formData.icon === emoji ? 'active' : ''}`}
+                        onClick={() => setFormData({ ...formData, icon: emoji })}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-section">
+                  <label>Цвет</label>
+                  <div className="color-picker">
+                    <input
+                      type="color"
+                      value={formData.color}
+                      onChange={e => setFormData({ ...formData, color: e.target.value })}
+                    />
+                    <span>{formData.color}</span>
+                  </div>
+                </div>
+                <button className="upload-photo-btn" disabled>
+                  <Camera size={18} />
+                  Загрузить фото
+                  <span className="badge-dev">В разработке</span>
+                </button>
+              </div>
+            )}
 
             {formData.isCustom && (
               <div className="form-section">
@@ -915,37 +970,6 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               
               <p className="notification-summary">{getNotificationSummary()}</p>
             </div>
-
-            {formData.isCustom && (
-              <>
-                <div className="form-section">
-                  <label>Иконка</label>
-                  <div className="emoji-selector">
-                    {EMOJI_OPTIONS.map(emoji => (
-                      <button
-                        key={emoji}
-                        className={`emoji-btn ${formData.icon === emoji ? 'active' : ''}`}
-                        onClick={() => setFormData({ ...formData, icon: emoji })}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="form-section">
-                  <label>Цвет</label>
-                  <div className="color-picker">
-                    <input
-                      type="color"
-                      value={formData.color}
-                      onChange={e => setFormData({ ...formData, color: e.target.value })}
-                    />
-                    <span>{formData.color}</span>
-                  </div>
-                </div>
-              </>
-            )}
 
             <button className="save-btn" onClick={handleSave} disabled={isLoading || !formData.name || !formData.amount}>
               {isLoading ? <Loader className="spin" size={20} /> : <Check size={20} />}
@@ -2255,19 +2279,21 @@ const styles = `
     inset: 0;
     background: rgba(0, 0, 0, 0.8);
     display: flex;
-    align-items: flex-end;
+    align-items: stretch;
     justify-content: center;
     z-index: 1000;
   }
 
   .modal {
     background: var(--bg-primary);
-    border-radius: 24px 24px 0 0;
     width: 100%;
-    max-height: 90vh;
-    max-height: 90dvh;
+    height: 100%;
     overflow: hidden;
     animation: slideUp 0.3s ease;
+  }
+
+  .modal.closing {
+    animation: slideDown 0.3s ease forwards;
   }
 
   .subscription-modal {
@@ -2279,6 +2305,11 @@ const styles = `
   @keyframes slideUp {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
+  }
+
+  @keyframes slideDown {
+    from { transform: translateY(0); }
+    to { transform: translateY(100%); }
   }
 
   .modal-header {
@@ -2312,10 +2343,80 @@ const styles = `
 
   /* Template Selector */
   .template-selector {
-    padding: 16px;
-    padding-bottom: calc(16px + var(--tg-safe-area-bottom));
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     flex: 1;
+    overflow: hidden;
+  }
+
+  .template-selector-sticky {
+    padding: 16px 16px 0;
+    flex-shrink: 0;
+  }
+
+  .template-selector-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 16px 16px;
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .custom-sub-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-secondary);
+    border: 2px dashed var(--border);
+    border-radius: 14px;
+    cursor: pointer;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+    transition: all 0.2s;
+  }
+
+  .custom-sub-btn:active { transform: scale(0.98); }
+
+  .custom-sub-btn span {
+    flex: 1;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.9375rem;
+  }
+
+  .custom-sub-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .custom-sub-chevron {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .template-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+  }
+
+  .template-divider::before,
+  .template-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
   }
 
   .search-box {
@@ -2385,7 +2486,7 @@ const styles = `
   }
 
   .template-item:active { transform: scale(0.97); }
-  .template-item.custom { border: 2px dashed var(--border); }
+
 
   .template-icon {
     width: 40px;
@@ -2731,6 +2832,60 @@ const styles = `
   }
 
   .color-picker span { font-family: monospace; color: var(--text-secondary); font-size: 0.875rem; }
+
+  .form-logo-btn {
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .logo-edit-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 20px;
+    height: 20px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    border: 2px solid var(--bg-primary);
+  }
+
+  .logo-picker {
+    background: var(--bg-secondary);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .upload-photo-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    cursor: not-allowed;
+    opacity: 0.6;
+    margin-top: 12px;
+  }
+
+  .badge-dev {
+    font-size: 0.625rem;
+    padding: 2px 6px;
+    background: var(--accent);
+    color: white;
+    border-radius: 4px;
+    font-weight: 700;
+  }
 
   .save-btn {
     width: 100%;
