@@ -249,10 +249,16 @@ const api = {
 // ============================================
 // КОМПОНЕНТ: TOAST УВЕДОМЛЕНИЕ
 // ============================================
-const Toast = ({ message, visible, onHide }) => {
+const Toast = ({ message, visible, type = 'success', onHide }) => {
+  const [isLeaving, setIsLeaving] = useState(false);
+
   useEffect(() => {
     if (visible) {
-      const timer = setTimeout(onHide, 3000);
+      setIsLeaving(false);
+      const timer = setTimeout(() => {
+        setIsLeaving(true);
+        setTimeout(onHide, 300);
+      }, 2700);
       return () => clearTimeout(timer);
     }
   }, [visible, onHide]);
@@ -260,8 +266,8 @@ const Toast = ({ message, visible, onHide }) => {
   if (!visible) return null;
 
   return (
-    <div className="toast">
-      <Check size={18} />
+    <div className={`toast ${type} ${isLeaving ? 'leaving' : ''}`}>
+      {type === 'error' ? <X size={18} /> : <Check size={18} />}
       <span>{message}</span>
     </div>
   );
@@ -1185,9 +1191,10 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
 // ============================================
 // КОМПОНЕНТ: ЭКРАН НАСТРОЕК
 // ============================================
-const SettingsScreen = ({ user, onClose }) => {
+const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, onClose }) => {
   const tg = getTelegram();
   const telegramUser = tg?.initDataUnsafe?.user;
+  const [showVersionInfo, setShowVersionInfo] = useState(false);
 
   // Get user photo URL from Telegram
   const photoUrl = telegramUser?.photo_url || null;
@@ -1196,13 +1203,52 @@ const SettingsScreen = ({ user, onClose }) => {
     : user?.first_name || 'Пользователь';
   const telegramId = telegramUser?.id || user?.telegram_id || user?.id || '—';
 
+  const orderedCategories = useMemo(() => {
+    if (!appSettings?.categoryOrder) return categories || [];
+    return appSettings.categoryOrder
+      .map(id => (categories || []).find(c => c.id === id))
+      .filter(Boolean);
+  }, [categories, appSettings?.categoryOrder]);
+
+  // Ensure new categories not in order are visible
+  const allOrderedCategories = useMemo(() => {
+    const ordered = [...orderedCategories];
+    (categories || []).forEach(cat => {
+      if (!ordered.some(c => c.id === cat.id)) {
+        ordered.push(cat);
+      }
+    });
+    return ordered;
+  }, [orderedCategories, categories]);
+
+  const hiddenCategories = appSettings?.hiddenCategories || [];
+
+  const moveCategory = (index, direction) => {
+    const order = allOrderedCategories.map(c => c.id);
+    const [item] = order.splice(index, 1);
+    order.splice(index + direction, 0, item);
+    onUpdateSettings(prev => ({ ...prev, categoryOrder: order }));
+  };
+
+  const toggleCategoryVisibility = (catId) => {
+    onUpdateSettings(prev => {
+      const hidden = prev.hiddenCategories || [];
+      return {
+        ...prev,
+        hiddenCategories: hidden.includes(catId)
+          ? hidden.filter(id => id !== catId)
+          : [...hidden, catId],
+      };
+    });
+  };
+
   return (
     <div className="settings-screen">
       <div className="settings-header">
         <button className="back-btn" onClick={onClose}>
           <ArrowLeft size={20} />
         </button>
-        <h2>Профиль</h2>
+        <h2>Настройки</h2>
         <div style={{ width: 32 }} />
       </div>
 
@@ -1221,7 +1267,65 @@ const SettingsScreen = ({ user, onClose }) => {
           <h3 className="profile-name">{displayName}</h3>
           <span className="profile-id">ID: {telegramId}</span>
         </div>
+
+        {/* Category Management */}
+        <div className="settings-section">
+          <h3><Settings size={18} /> Главный экран</h3>
+          <div className="category-manage-list">
+            {allOrderedCategories.map((cat, index) => (
+              <div key={cat.id} className="category-manage-item">
+                <div className="category-manage-dot" style={{ background: cat.color }} />
+                <span className="category-manage-name">{cat.name}</span>
+                <div className="category-manage-actions">
+                  <button onClick={() => moveCategory(index, -1)} disabled={index === 0}>
+                    <ChevronLeft size={16} style={{ transform: 'rotate(90deg)' }} />
+                  </button>
+                  <button onClick={() => moveCategory(index, 1)} disabled={index === allOrderedCategories.length - 1}>
+                    <ChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
+                  </button>
+                  <label className="toggle small">
+                    <input
+                      type="checkbox"
+                      checked={!hiddenCategories.includes(cat.id)}
+                      onChange={() => toggleCategoryVisibility(cat.id)}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="version-badge" onClick={() => setShowVersionInfo(true)}>
+          <span className="version-tag">Beta 0.1.12</span>
+          <ChevronRight size={14} />
+        </div>
       </div>
+
+      {showVersionInfo && (
+        <div className="modal-overlay" style={{ alignItems: 'center' }} onClick={() => setShowVersionInfo(false)}>
+          <div className="version-modal" onClick={e => e.stopPropagation()}>
+            <div className="version-modal-header">
+              <h3>О приложении</h3>
+              <button className="close-btn" onClick={() => setShowVersionInfo(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="version-modal-body">
+              <div className="version-logo">Subfy</div>
+              <span className="version-number">Beta 0.1.12</span>
+              <p className="version-desc">Трекер подписок в Telegram</p>
+              <button className="contact-btn" onClick={() => {
+                const tg = getTelegram();
+                tg?.openTelegramLink?.('https://t.me/subfy_support');
+              }}>
+                Связаться
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1360,7 +1464,12 @@ const CalendarView = ({ subscriptions, currencies }) => {
 export default function SubfyApp() {
   const [appState, setAppState] = useState('loading');
   const [user, setUser] = useState(null);
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('subfy_theme');
+    if (saved) return saved;
+    const tg = getTelegram();
+    return tg?.colorScheme || 'dark';
+  });
   const [activeTab, setActiveTab] = useState('home');
   const [showForm, setShowForm] = useState(false);
   const [editingSubscription, setEditingSubscription] = useState(null);
@@ -1370,13 +1479,14 @@ export default function SubfyApp() {
   const [isDevMode, setIsDevMode] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [toast, setToast] = useState({ visible: false, message: '' });
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
   const [dbTemplates, setDbTemplates] = useState([]);
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
   // Настройки приложения
   const [appSettings, setAppSettings] = useState(() => {
     const saved = localStorage.getItem('subfy_settings');
-    return saved ? JSON.parse(saved) : {
+    const defaults = {
       notificationsEnabled: true,
       defaultDaysBefore: 1,
       defaultNotifyOnDay: true,
@@ -1384,7 +1494,10 @@ export default function SubfyApp() {
       quietHoursEnabled: false,
       quietHoursStart: '23:00',
       quietHoursEnd: '08:00',
+      categoryOrder: null,
+      hiddenCategories: [],
     };
+    return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
 
   // Custom categories state
@@ -1418,10 +1531,48 @@ export default function SubfyApp() {
     return dbTemplates.length > 0 ? dbTemplates.map(normalizeTemplate) : SUBSCRIPTION_TEMPLATES;
   }, [dbTemplates]);
 
+  const allCategories = useMemo(() => [...CATEGORIES, ...customCategories], [customCategories]);
+
+  const groupedSubscriptions = useMemo(() => {
+    const hidden = appSettings.hiddenCategories || [];
+    const order = appSettings.categoryOrder || allCategories.map(c => c.id);
+
+    const orderedCats = order
+      .map(id => allCategories.find(c => c.id === id))
+      .filter(c => c && !hidden.includes(c.id));
+
+    // Add any new categories not in order yet
+    allCategories.forEach(cat => {
+      if (!order.includes(cat.id) && !hidden.includes(cat.id)) {
+        orderedCats.push(cat);
+      }
+    });
+
+    const groups = {};
+    orderedCats.forEach(cat => {
+      const catSubs = subscriptions.filter(sub => sub.category === cat.name);
+      if (catSubs.length > 0) {
+        groups[cat.name] = { ...cat, subscriptions: catSubs };
+      }
+    });
+    const uncategorized = subscriptions.filter(sub =>
+      !allCategories.some(cat => cat.name === sub.category)
+    );
+    if (uncategorized.length > 0) {
+      groups['Без категории'] = { id: 'uncategorized', name: 'Без категории', color: '#6B7280', subscriptions: uncategorized };
+    }
+    return groups;
+  }, [subscriptions, allCategories, appSettings]);
+
   // Сохранение настроек
   useEffect(() => {
     localStorage.setItem('subfy_settings', JSON.stringify(appSettings));
   }, [appSettings]);
+
+  // Сохранение темы
+  useEffect(() => {
+    localStorage.setItem('subfy_theme', theme);
+  }, [theme]);
 
   // Инициализация Telegram WebApp
   useEffect(() => {
@@ -1456,7 +1607,6 @@ export default function SubfyApp() {
       tg.onEvent?.('contentSafeAreaChanged', updateSafeAreaInsets);
       tg.onEvent?.('fullscreenChanged', updateSafeAreaInsets);
 
-      if (tg.colorScheme === 'light') setTheme('light');
     }
     initializeApp();
   }, []);
@@ -1501,8 +1651,8 @@ export default function SubfyApp() {
     }
   };
 
-  const showToast = (message) => {
-    setToast({ visible: true, message });
+  const showToast = (message, type = 'success') => {
+    setToast({ visible: true, message, type });
   };
 
   const saveSubscription = async (data) => {
@@ -1538,7 +1688,7 @@ export default function SubfyApp() {
       setEditingSubscription(null);
     } catch (err) {
       console.error('Save error:', err);
-      setError('Ошибка сохранения');
+      showToast('Ошибка сохранения', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -1589,7 +1739,11 @@ export default function SubfyApp() {
           sub.billing_cycle || sub.billingCycle
         ),
       }))
-      .filter(sub => sub.nextDate !== null)
+      .filter(sub => {
+        if (!sub.nextDate) return false;
+        const days = getDaysUntil(sub.nextDate);
+        return days !== null && days >= 0 && days <= 3;
+      })
       .sort((a, b) => a.nextDate - b.nextDate);
   }, [subscriptions]);
 
@@ -1629,6 +1783,9 @@ export default function SubfyApp() {
         <style>{styles}</style>
         <SettingsScreen
           user={user}
+          appSettings={appSettings}
+          onUpdateSettings={setAppSettings}
+          categories={allCategories}
           onClose={() => setShowSettings(false)}
         />
       </div>
@@ -1696,11 +1853,11 @@ export default function SubfyApp() {
                   <h2 className="section-title">Ближайшие списания</h2>
                 </div>
                 <div className="upcoming-list">
-                  {upcomingBillings.slice(0, 3).map(sub => {
+                  {upcomingBillings.map(sub => {
                     const currency = CURRENCIES.find(c => c.code === sub.currency);
                     const daysUntil = getDaysUntil(sub.nextDate);
                     return (
-                      <div key={sub.id} className="upcoming-item">
+                      <div key={sub.id} className={`upcoming-item ${daysUntil === 0 ? 'today' : ''}`}>
                         <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} logoUrl={sub.logo_url} />
                         <div className="upcoming-info">
                           <div className="upcoming-name">{sub.name}</div>
@@ -1719,35 +1876,55 @@ export default function SubfyApp() {
               <span className="section-count">{subscriptions.length}</span>
             </div>
 
-            <div className="subscriptions-list">
-              {subscriptions.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-icon">📦</div>
-                  <h3 className="empty-title">Нет подписок</h3>
-                  <p className="empty-text">Добавьте первую подписку</p>
-                  <button className="empty-btn" onClick={() => {
-                    hapticFeedbackForCreate();
-                    setShowForm(true);
-                  }}>
-                    <Plus size={20} />
-                    Добавить
+            {subscriptions.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">📦</div>
+                <h3 className="empty-title">Нет подписок</h3>
+                <p className="empty-text">Добавьте первую подписку</p>
+                <button className="empty-btn" onClick={() => {
+                  hapticFeedbackForCreate();
+                  setShowForm(true);
+                }}>
+                  <Plus size={20} />
+                  Добавить
+                </button>
+              </div>
+            ) : (
+              Object.entries(groupedSubscriptions).map(([catName, group]) => (
+                <div key={catName} className="category-group">
+                  <button
+                    className="category-group-header"
+                    onClick={() => setCollapsedCategories(prev => ({
+                      ...prev, [catName]: !prev[catName]
+                    }))}
+                  >
+                    <div className="category-group-dot" style={{ background: group.color }} />
+                    <span className="category-group-name">{catName}</span>
+                    <span className="category-group-count">{group.subscriptions.length}</span>
+                    <ChevronRight
+                      size={16}
+                      className={`category-group-chevron ${collapsedCategories[catName] ? '' : 'expanded'}`}
+                    />
                   </button>
+                  {!collapsedCategories[catName] && (
+                    <div className="subscriptions-list">
+                      {group.subscriptions.map(sub => (
+                        <SubscriptionCard
+                          key={sub.id}
+                          subscription={sub}
+                          onEdit={(s) => {
+                            setEditingSubscription(s);
+                            setShowForm(true);
+                          }}
+                          onDelete={deleteSubscription}
+                          currencies={CURRENCIES}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                subscriptions.map(sub => (
-                  <SubscriptionCard
-                    key={sub.id}
-                    subscription={sub}
-                    onEdit={(s) => {
-                      setEditingSubscription(s);
-                      setShowForm(true);
-                    }}
-                    onDelete={deleteSubscription}
-                    currencies={CURRENCIES}
-                  />
-                ))
-              )}
-            </div>
+              ))
+            )}
           </>
         ) : (
           <CalendarView subscriptions={subscriptions} currencies={CURRENCIES} />
@@ -1769,10 +1946,11 @@ export default function SubfyApp() {
       )}
 
       {/* Toast */}
-      <Toast 
-        message={toast.message} 
-        visible={toast.visible} 
-        onHide={() => setToast({ ...toast, visible: false })} 
+      <Toast
+        message={toast.message}
+        visible={toast.visible}
+        type={toast.type}
+        onHide={() => setToast({ ...toast, visible: false })}
       />
     </div>
   );
@@ -1862,9 +2040,20 @@ const styles = `
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
   }
 
+  .toast.error { background: var(--danger); }
+
+  .toast.leaving {
+    animation: toastOut 0.3s ease forwards;
+  }
+
   @keyframes toastIn {
     from { opacity: 0; transform: translateX(-50%) translateY(20px); }
     to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  @keyframes toastOut {
+    from { opacity: 1; transform: translateX(-50%) translateY(0); }
+    to { opacity: 0; transform: translateX(-50%) translateY(20px); }
   }
 
   /* Loading Screen */
@@ -2128,10 +2317,61 @@ const styles = `
     border-radius: 12px;
   }
 
+  .upcoming-item.today { border-left: 3px solid var(--danger); }
+
   .upcoming-info { flex: 1; min-width: 0; }
   .upcoming-name { font-weight: 600; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .upcoming-date { font-size: 0.75rem; color: var(--text-secondary); }
   .upcoming-amount { font-weight: 700; font-size: 0.875rem; flex-shrink: 0; }
+
+  /* Category Groups */
+  .category-group { margin-bottom: 12px; }
+
+  .category-group-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    border: none;
+    border-radius: 12px;
+    color: var(--text-primary);
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+
+  .category-group-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .category-group-name {
+    flex: 1;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  .category-group-count {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 10px;
+  }
+
+  .category-group-chevron {
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+    transform: rotate(0deg);
+  }
+
+  .category-group-chevron.expanded {
+    transform: rotate(90deg);
+  }
 
   /* Subscription Cards with Swipe */
   .subscriptions-list {
@@ -3040,6 +3280,86 @@ const styles = `
     font-family: monospace;
   }
 
+  .version-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px;
+    margin-top: 24px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .version-tag {
+    padding: 4px 10px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    font-weight: 600;
+  }
+
+  .version-modal {
+    background: var(--bg-secondary);
+    border-radius: 20px;
+    width: calc(100% - 48px);
+    max-width: 320px;
+    overflow: hidden;
+  }
+
+  .version-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .version-modal-header h3 { font-size: 1rem; font-weight: 700; }
+
+  .version-modal-body {
+    padding: 24px;
+    text-align: center;
+  }
+
+  .version-logo {
+    font-size: 1.5rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+
+  .version-number {
+    display: inline-block;
+    padding: 4px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+
+  .version-desc {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin-bottom: 20px;
+  }
+
+  .contact-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
   .analytics-summary {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -3259,6 +3579,75 @@ const styles = `
     border-radius: 8px;
     color: var(--text-primary);
     font-size: 0.875rem;
+  }
+
+  /* Category Management in Settings */
+  .category-manage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .category-manage-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 10px;
+  }
+
+  .category-manage-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .category-manage-name {
+    flex: 1;
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  .category-manage-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .category-manage-actions button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .category-manage-actions button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .toggle.small {
+    width: 36px;
+    height: 20px;
+  }
+
+  .toggle.small .toggle-slider:before {
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+  }
+
+  .toggle.small input:checked + .toggle-slider:before {
+    transform: translateX(16px);
   }
 
   .system-settings-link {
