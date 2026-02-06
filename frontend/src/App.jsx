@@ -425,9 +425,9 @@ const Logo = ({ domain, emoji, color, size = 32, logoUrl }) => {
 // ============================================
 const ConfirmModal = ({ visible, title, message, onConfirm, onCancel }) => {
   if (!visible) return null;
-  
+
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay confirm-overlay" onClick={onCancel}>
       <div className="confirm-modal" onClick={e => e.stopPropagation()}>
         <h3>{title}</h3>
         <p>{message}</p>
@@ -511,7 +511,6 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          onClick={() => swipeX === 0 && onEdit(subscription)}
         >
           <div className="sub-card-accent" />
           <div className="sub-card-content">
@@ -531,6 +530,9 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
                   <span className="price-cycle">/ мес</span>
                 </div>
               </div>
+              <button className="sub-edit-btn" onClick={(e) => { e.stopPropagation(); onEdit(subscription); }}>
+                <Edit3 size={16} />
+              </button>
               <div className={`sub-next ${daysUntil !== null && daysUntil <= 3 ? 'soon' : ''}`}>
                 <span>{formatDaysUntil(daysUntil)}</span>
               </div>
@@ -1195,6 +1197,7 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, onClo
   const tg = getTelegram();
   const telegramUser = tg?.initDataUnsafe?.user;
   const [showVersionInfo, setShowVersionInfo] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('profile');
 
   // Get user photo URL from Telegram
   const photoUrl = telegramUser?.photo_url || null;
@@ -1210,7 +1213,6 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, onClo
       .filter(Boolean);
   }, [categories, appSettings?.categoryOrder]);
 
-  // Ensure new categories not in order are visible
   const allOrderedCategories = useMemo(() => {
     const ordered = [...orderedCategories];
     (categories || []).forEach(cat => {
@@ -1252,59 +1254,82 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, onClo
         <div style={{ width: 32 }} />
       </div>
 
+      {/* Settings Tabs */}
+      <div className="settings-tabs">
+        <button
+          className={`settings-tab ${settingsTab === 'profile' ? 'active' : ''}`}
+          onClick={() => setSettingsTab('profile')}
+        >
+          Профиль
+        </button>
+        <button
+          className={`settings-tab ${settingsTab === 'menu' ? 'active' : ''}`}
+          onClick={() => setSettingsTab('menu')}
+        >
+          Настройки меню
+        </button>
+      </div>
+
       <div className="settings-content">
-        {/* User Profile */}
-        <div className="profile-section">
-          <div className="profile-avatar">
-            {photoUrl ? (
-              <img src={photoUrl} alt="Avatar" />
-            ) : (
-              <div className="avatar-placeholder">
-                {displayName.charAt(0).toUpperCase()}
+        {settingsTab === 'profile' ? (
+          <>
+            {/* User Profile */}
+            <div className="profile-section">
+              <div className="profile-avatar">
+                {photoUrl ? (
+                  <img src={photoUrl} alt="Avatar" />
+                ) : (
+                  <div className="avatar-placeholder">
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <h3 className="profile-name">{displayName}</h3>
-          <span className="profile-id">ID: {telegramId}</span>
-        </div>
+              <h3 className="profile-name">{displayName}</h3>
+              <span className="profile-id">ID: {telegramId}</span>
+            </div>
 
-        {/* Category Management */}
-        <div className="settings-section">
-          <h3><Settings size={18} /> Главный экран</h3>
-          <div className="category-manage-list">
-            {allOrderedCategories.map((cat, index) => (
-              <div key={cat.id} className="category-manage-item">
-                <div className="category-manage-dot" style={{ background: cat.color }} />
-                <span className="category-manage-name">{cat.name}</span>
-                <div className="category-manage-actions">
-                  <button onClick={() => moveCategory(index, -1)} disabled={index === 0}>
-                    <ChevronLeft size={16} style={{ transform: 'rotate(90deg)' }} />
-                  </button>
-                  <button onClick={() => moveCategory(index, 1)} disabled={index === allOrderedCategories.length - 1}>
-                    <ChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
-                  </button>
-                  <label className="toggle small">
-                    <input
-                      type="checkbox"
-                      checked={!hiddenCategories.includes(cat.id)}
-                      onChange={() => toggleCategoryVisibility(cat.id)}
-                    />
-                    <span className="toggle-slider" />
-                  </label>
-                </div>
+            <div className="version-badge" onClick={() => setShowVersionInfo(true)}>
+              <span className="version-tag">Beta 0.1.12</span>
+              <ChevronRight size={14} />
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Category Management */}
+            <div className="settings-section">
+              <h3><Settings size={18} /> Категории на главном экране</h3>
+              <p className="settings-section-desc">Настройте порядок и видимость категорий</p>
+              <div className="category-manage-list">
+                {allOrderedCategories.map((cat, index) => (
+                  <div key={cat.id} className="category-manage-item">
+                    <div className="category-manage-dot" style={{ background: cat.color }} />
+                    <span className="category-manage-name">{cat.name}</span>
+                    <div className="category-manage-actions">
+                      <button onClick={() => moveCategory(index, -1)} disabled={index === 0}>
+                        <ChevronLeft size={16} style={{ transform: 'rotate(90deg)' }} />
+                      </button>
+                      <button onClick={() => moveCategory(index, 1)} disabled={index === allOrderedCategories.length - 1}>
+                        <ChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
+                      </button>
+                      <label className="toggle small">
+                        <input
+                          type="checkbox"
+                          checked={!hiddenCategories.includes(cat.id)}
+                          onChange={() => toggleCategoryVisibility(cat.id)}
+                        />
+                        <span className="toggle-slider" />
+                      </label>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="version-badge" onClick={() => setShowVersionInfo(true)}>
-          <span className="version-tag">Beta 0.1.12</span>
-          <ChevronRight size={14} />
-        </div>
+            </div>
+          </>
+        )}
       </div>
 
       {showVersionInfo && (
-        <div className="modal-overlay" style={{ alignItems: 'center' }} onClick={() => setShowVersionInfo(false)}>
+        <div className="modal-overlay confirm-overlay" onClick={() => setShowVersionInfo(false)}>
           <div className="version-modal" onClick={e => e.stopPropagation()}>
             <div className="version-modal-header">
               <h3>О приложении</h3>
@@ -1534,16 +1559,15 @@ export default function SubfyApp() {
   const allCategories = useMemo(() => [...CATEGORIES, ...customCategories], [customCategories]);
 
   const groupedSubscriptions = useMemo(() => {
-    const hidden = appSettings.hiddenCategories || [];
     const order = appSettings.categoryOrder || allCategories.map(c => c.id);
 
     const orderedCats = order
       .map(id => allCategories.find(c => c.id === id))
-      .filter(c => c && !hidden.includes(c.id));
+      .filter(Boolean);
 
     // Add any new categories not in order yet
     allCategories.forEach(cat => {
-      if (!order.includes(cat.id) && !hidden.includes(cat.id)) {
+      if (!order.includes(cat.id)) {
         orderedCats.push(cat);
       }
     });
@@ -1584,6 +1608,11 @@ export default function SubfyApp() {
       // Request full screen mode for Telegram 2.0
       if (tg.requestFullscreen) {
         tg.requestFullscreen();
+      }
+
+      // Disable swipe-to-close gesture
+      if (tg.disableVerticalSwipes) {
+        tg.disableVerticalSwipes();
       }
 
       // Set up CSS variables for Telegram safe area insets
@@ -1856,12 +1885,13 @@ export default function SubfyApp() {
                   {upcomingBillings.map(sub => {
                     const currency = CURRENCIES.find(c => c.code === sub.currency);
                     const daysUntil = getDaysUntil(sub.nextDate);
+                    const daysLabel = daysUntil === 0 ? 'Сегодня' : daysUntil === 1 ? 'Завтра' : `Через ${daysUntil} дн.`;
                     return (
                       <div key={sub.id} className={`upcoming-item ${daysUntil === 0 ? 'today' : ''}`}>
                         <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} logoUrl={sub.logo_url} />
                         <div className="upcoming-info">
                           <div className="upcoming-name">{sub.name}</div>
-                          <div className="upcoming-date">{formatDateFull(sub.nextDate)}</div>
+                          <div className="upcoming-date">{daysLabel}</div>
                         </div>
                         <div className="upcoming-amount">{sub.amount} {currency?.symbol}</div>
                       </div>
@@ -2451,6 +2481,23 @@ const styles = `
 
   .sub-price-inline .price-amount { font-weight: 700; color: var(--text-primary); }
 
+  .sub-edit-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+
+  .sub-edit-btn:active { background: var(--accent); color: white; }
+
   .sub-next {
     display: flex;
     align-items: center;
@@ -2465,6 +2512,17 @@ const styles = `
 
   .sub-next.soon { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
 
+  /* Confirm Overlay - centered */
+  .confirm-overlay {
+    align-items: center;
+    animation: fadeOverlayIn 0.2s ease;
+  }
+
+  @keyframes fadeOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
   /* Confirm Modal */
   .confirm-modal {
     background: var(--bg-secondary);
@@ -2473,6 +2531,12 @@ const styles = `
     width: calc(100% - 48px);
     max-width: 320px;
     text-align: center;
+    animation: confirmPopIn 0.2s ease;
+  }
+
+  @keyframes confirmPopIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
   }
 
   .confirm-modal h3 { font-size: 1.125rem; font-weight: 700; margin-bottom: 8px; }
@@ -3213,6 +3277,40 @@ const styles = `
   }
 
   .analytics-header h2, .settings-header h2 { font-size: 1rem; font-weight: 700; }
+
+  .settings-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 12px 16px 0;
+    background: var(--bg-secondary);
+    padding: 4px;
+    border-radius: 12px;
+    flex-shrink: 0;
+  }
+
+  .settings-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .settings-tab.active { background: var(--accent); color: white; }
+
+  .settings-section-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
 
   .save-text-btn {
     background: none;
