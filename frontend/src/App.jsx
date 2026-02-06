@@ -13,6 +13,7 @@ const ENDPOINTS = {
   getSubscriptions: `${API_BASE}/get-subscriptions`,
   saveSubscription: `${API_BASE}/save-subscription`,
   deleteSubscription: `${API_BASE}/delete-subscription`,
+  getTemplates: `${API_BASE}/get-templates`,
 };
 
 // ============================================
@@ -38,6 +39,18 @@ const SUBSCRIPTION_TEMPLATES = [
   { id: 't17', name: 'ChatGPT Plus', price: 1900, color: '#10A37F', category: 'Работа', domain: 'openai.com' },
   { id: 't18', name: 'Notion', price: 800, color: '#000000', category: 'Работа', domain: 'notion.so' },
 ];
+
+const normalizeTemplate = (t) => ({
+  id: t.id,
+  name: t.name,
+  price: t.default_price,
+  color: t.color,
+  category: t.category,
+  domain: t.domain || null,
+  icon: t.icon || '📦',
+  logo_url: t.logo_url || null,
+  currency: t.default_currency || 'RUB',
+});
 
 const CATEGORIES = [
   { id: 'entertainment', name: 'Развлечения', color: '#8B5CF6' },
@@ -192,6 +205,15 @@ const api = {
     if (!response.ok) throw new Error('Failed to delete');
     return response.json();
   },
+
+  async getTemplates() {
+    const response = await fetch(ENDPOINTS.getTemplates, {
+      method: 'GET',
+      headers: apiHeaders,
+    });
+    if (!response.ok) throw new Error('Failed to fetch templates');
+    return response.json();
+  },
 };
 
 // ============================================
@@ -322,12 +344,12 @@ const LoadingScreen = ({ message = 'Загрузка...' }) => (
 // ============================================
 // КОМПОНЕНТ: ЛОГОТИП
 // ============================================
-const Logo = ({ domain, emoji, color, size = 32 }) => {
+const Logo = ({ domain, emoji, color, size = 32, logoUrl }) => {
   const [hasError, setHasError] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const logoUrl = domain ? `https://logo.clearbit.com/${domain}` : null;
-  
-  if (!domain || hasError) {
+  const imageUrl = logoUrl || (domain ? `https://logo.clearbit.com/${domain}` : null);
+
+  if (!imageUrl || hasError) {
     return (
       <div className="logo-emoji" style={{ 
         width: size, height: size, 
@@ -348,7 +370,7 @@ const Logo = ({ domain, emoji, color, size = 32 }) => {
       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     }}>
       <img
-        src={logoUrl}
+        src={imageUrl}
         alt=""
         style={{ 
           width: size - 4, height: size - 4, objectFit: 'contain',
@@ -458,11 +480,12 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
           <div className="sub-card-accent" />
           <div className="sub-card-content">
             <div className="sub-card-header">
-              <Logo 
-                domain={subscription.domain} 
-                emoji={subscription.icon} 
+              <Logo
+                domain={subscription.domain}
+                emoji={subscription.icon}
                 color={subscription.color}
                 size={44}
+                logoUrl={subscription.logo_url}
               />
               <div className="sub-info">
                 <h3 className="sub-name">{subscription.name}</h3>
@@ -556,6 +579,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     color: '#6366f1',
     icon: '📦',
     domain: null,
+    logo_url: null,
     isCustom: true,
     notifyEnabled: false,
     notifyDaysBefore: defaultNotificationSettings.daysBefore,
@@ -576,9 +600,11 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
       ...formData,
       name: template.name,
       amount: template.price,
+      currency: template.currency || 'RUB',
       color: template.color,
       icon: template.icon || '📦',
       domain: template.domain,
+      logo_url: template.logo_url || null,
       category: template.category,
       isCustom: false,
       templateId: template.id,
@@ -657,7 +683,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               </button>
               {filteredTemplates.map(template => (
                 <button key={template.id} className="template-item" onClick={() => selectTemplate(template)}>
-                  <Logo domain={template.domain} color={template.color} size={40} />
+                  <Logo domain={template.domain} emoji={template.icon} color={template.color} size={40} logoUrl={template.logo_url} />
                   <span>{template.name}</span>
                 </button>
               ))}
@@ -666,7 +692,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
         ) : (
           <div className="subscription-form">
             <div className="form-preview">
-              <Logo domain={formData.domain} emoji={formData.icon} color={formData.color} size={56} />
+              <Logo domain={formData.domain} emoji={formData.icon} color={formData.color} size={56} logoUrl={formData.logo_url} />
               <div className="preview-info">
                 <h3>{formData.name || 'Название'}</h3>
                 <p>{formData.amount ? `${formData.amount} ${CURRENCIES.find(c => c.code === formData.currency)?.symbol}` : '0 ₽'}</p>
@@ -1087,7 +1113,7 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
             {topSubscriptions.map((sub, idx) => (
               <div key={sub.id} className="top-item">
                 <span className="top-rank">{idx + 1}</span>
-                <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} />
+                <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} logoUrl={sub.logo_url} />
                 <div className="top-info">
                   <span className="top-name">{sub.name}</span>
                   <span className="top-monthly">{Math.round(sub.monthlyRub).toLocaleString('ru-RU')} ₽/мес</span>
@@ -1263,7 +1289,7 @@ const CalendarView = ({ subscriptions, currencies }) => {
               const currency = currencies.find(c => c.code === sub.currency) || currencies[0];
               return (
                 <div key={sub.id} className="day-detail-item">
-                  <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} />
+                  <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} logoUrl={sub.logo_url} />
                   <div className="detail-info">
                     <span className="detail-name">{sub.name}</span>
                     <span className="detail-category">{sub.category}</span>
@@ -1296,6 +1322,7 @@ export default function SubfyApp() {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '' });
+  const [dbTemplates, setDbTemplates] = useState([]);
 
   // Настройки приложения
   const [appSettings, setAppSettings] = useState(() => {
@@ -1337,6 +1364,10 @@ export default function SubfyApp() {
       return updated;
     });
   };
+
+  const effectiveTemplates = useMemo(() => {
+    return dbTemplates.length > 0 ? dbTemplates.map(normalizeTemplate) : SUBSCRIPTION_TEMPLATES;
+  }, [dbTemplates]);
 
   // Сохранение настроек
   useEffect(() => {
@@ -1383,10 +1414,18 @@ export default function SubfyApp() {
 
   const initializeApp = async () => {
     try {
+      // Загружаем шаблоны из БД (не зависит от авторизации)
+      try {
+        const { templates } = await api.getTemplates();
+        setDbTemplates(templates || []);
+      } catch (e) {
+        console.error('Templates fetch error:', e);
+      }
+
       const tg = getTelegram();
       const initData = tg?.initData;
       const hasSeenOnboarding = localStorage.getItem('subfy_onboarding_complete');
-      
+
       if (!initData || !SUPABASE_URL) {
         setIsDevMode(true);
         const savedSubs = localStorage.getItem('subfy_subscriptions');
@@ -1613,7 +1652,7 @@ export default function SubfyApp() {
                     const daysUntil = getDaysUntil(sub.nextDate);
                     return (
                       <div key={sub.id} className="upcoming-item">
-                        <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} />
+                        <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} logoUrl={sub.logo_url} />
                         <div className="upcoming-info">
                           <div className="upcoming-name">{sub.name}</div>
                           <div className="upcoming-date">{formatDateFull(sub.nextDate)}</div>
@@ -1672,7 +1711,7 @@ export default function SubfyApp() {
           onClose={() => { setShowForm(false); setEditingSubscription(null); }}
           onSave={saveSubscription}
           editData={editingSubscription}
-          templates={SUBSCRIPTION_TEMPLATES}
+          templates={effectiveTemplates}
           isLoading={isLoading}
           defaultNotificationSettings={defaultNotificationSettings}
           customCategories={customCategories}
