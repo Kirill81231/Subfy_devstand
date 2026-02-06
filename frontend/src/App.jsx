@@ -1355,6 +1355,11 @@ export default function SubfyApp() {
         tg.requestFullscreen();
       }
 
+      // Disable vertical swipes to prevent accidental close while scrolling
+      if (tg.disableVerticalSwipes) {
+        tg.disableVerticalSwipes();
+      }
+
       // Set up CSS variables for Telegram safe area insets
       const updateSafeAreaInsets = () => {
         const safeAreaTop = tg.safeAreaInset?.top || 0;
@@ -1362,10 +1367,16 @@ export default function SubfyApp() {
         const contentSafeAreaTop = tg.contentSafeAreaInset?.top || 0;
         const contentSafeAreaBottom = tg.contentSafeAreaInset?.bottom || 0;
 
+        // Calculate effective top padding - use max of all insets
+        // Minimum 56px for Telegram header buttons when in fullscreen
+        const minTopPadding = tg.isFullscreen ? 56 : 0;
+        const effectiveTop = Math.max(safeAreaTop, contentSafeAreaTop, minTopPadding);
+
         document.documentElement.style.setProperty('--tg-safe-area-top', `${safeAreaTop}px`);
         document.documentElement.style.setProperty('--tg-safe-area-bottom', `${safeAreaBottom}px`);
         document.documentElement.style.setProperty('--tg-content-safe-area-top', `${contentSafeAreaTop}px`);
         document.documentElement.style.setProperty('--tg-content-safe-area-bottom', `${contentSafeAreaBottom}px`);
+        document.documentElement.style.setProperty('--tg-header-padding', `${effectiveTop}px`);
       };
 
       updateSafeAreaInsets();
@@ -1708,6 +1719,7 @@ const styles = `
     --tg-safe-area-bottom: 0px;
     --tg-content-safe-area-top: 0px;
     --tg-content-safe-area-bottom: 0px;
+    --tg-header-padding: 0px;
   }
 
   html, body, #root {
@@ -1828,7 +1840,7 @@ const styles = `
   .onboarding-slides {
     flex: 1;
     overflow: hidden;
-    padding-top: calc(max(env(safe-area-inset-top), var(--tg-content-safe-area-top), var(--tg-safe-area-top)));
+    padding-top: var(--tg-header-padding, 0px);
   }
 
   .slides-track {
@@ -1854,7 +1866,7 @@ const styles = `
 
   .onboarding-footer {
     padding: 24px 32px;
-    padding-bottom: calc(24px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(24px + var(--tg-safe-area-bottom, 0px));
   }
 
   .dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 24px; }
@@ -1898,7 +1910,7 @@ const styles = `
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    padding-top: calc(12px + max(env(safe-area-inset-top), var(--tg-content-safe-area-top), var(--tg-safe-area-top)));
+    padding-top: calc(12px + var(--tg-header-padding, 0px));
     background: var(--bg-primary);
     flex-shrink: 0;
   }
@@ -2001,7 +2013,7 @@ const styles = `
     overflow-y: auto;
     overflow-x: hidden;
     padding: 0 16px 16px;
-    padding-bottom: calc(16px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom, 0px));
     -webkit-overflow-scrolling: touch;
   }
 
@@ -2222,7 +2234,7 @@ const styles = `
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    padding-top: calc(16px + max(env(safe-area-inset-top), var(--tg-content-safe-area-top), var(--tg-safe-area-top)));
+    padding-top: calc(16px + var(--tg-header-padding, 0px));
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
@@ -2249,7 +2261,7 @@ const styles = `
   /* Template Selector */
   .template-selector {
     padding: 16px;
-    padding-bottom: calc(16px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom, 0px));
     overflow-y: auto;
     flex: 1;
   }
@@ -2337,7 +2349,7 @@ const styles = `
   /* Subscription Form */
   .subscription-form {
     padding: 16px;
-    padding-bottom: calc(16px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom, 0px));
     overflow-y: auto;
     overflow-x: hidden;
     flex: 1;
@@ -2692,7 +2704,7 @@ const styles = `
     background: var(--bg-secondary);
     border-radius: 20px 20px 0 0;
     width: 100%;
-    padding-bottom: calc(20px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(20px + var(--tg-safe-area-bottom, 0px));
   }
 
   .period-modal-header {
@@ -2748,7 +2760,7 @@ const styles = `
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    padding-top: calc(12px + max(env(safe-area-inset-top), var(--tg-content-safe-area-top), var(--tg-safe-area-top)));
+    padding-top: calc(12px + var(--tg-header-padding, 0px));
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
@@ -2768,7 +2780,7 @@ const styles = `
     flex: 1;
     overflow-y: auto;
     padding: 16px;
-    padding-bottom: calc(16px + max(env(safe-area-inset-bottom), var(--tg-safe-area-bottom)));
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom, 0px));
   }
 
   /* Profile Section */
