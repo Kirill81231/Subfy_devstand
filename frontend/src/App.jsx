@@ -736,8 +736,6 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   const [logoSheetTab, setLogoSheetTab] = useState('emoji');
   const [logoScaledUp, setLogoScaledUp] = useState(false);
   const [showAmountModal, setShowAmountModal] = useState(false);
-  const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
   // Fix viewport shrink on keyboard open
   useEffect(() => {
@@ -909,30 +907,21 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               </div>
               <div className="settings-row-divider" />
 
-              <div className="settings-row" onClick={() => setShowPeriodDropdown(!showPeriodDropdown)}>
+              <div className="settings-row">
                 <span className="settings-row-label">Периодичность</span>
                 <div className="settings-row-value">
-                  <span>{BILLING_CYCLES.find(c => c.value === formData.billingCycle)?.label || 'Ежемесячно'}</span>
-                  <ChevronRight size={16} className={`settings-row-chevron ${showPeriodDropdown ? 'open' : ''}`} />
+                  <select
+                    className="native-select"
+                    value={formData.billingCycle}
+                    onChange={e => setFormData({ ...formData, billingCycle: e.target.value })}
+                  >
+                    {BILLING_CYCLES.map(cycle => (
+                      <option key={cycle.value} value={cycle.value}>{cycle.label}</option>
+                    ))}
+                  </select>
+                  <ChevronRight size={16} className="settings-row-chevron" />
                 </div>
               </div>
-              {showPeriodDropdown && (
-                <div className="period-dropdown-inline">
-                  {BILLING_CYCLES.map(cycle => (
-                    <button
-                      key={cycle.value}
-                      className={`period-dropdown-item ${formData.billingCycle === cycle.value ? 'active' : ''}`}
-                      onClick={() => {
-                        setFormData({ ...formData, billingCycle: cycle.value });
-                        setShowPeriodDropdown(false);
-                      }}
-                    >
-                      {cycle.label}
-                      {formData.billingCycle === cycle.value && <Check size={16} />}
-                    </button>
-                  ))}
-                </div>
-              )}
               <div className="settings-row-divider" />
 
               <div className="settings-row">
@@ -964,7 +953,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
 
             {/* Card 3: Category, Notifications */}
             <div className="settings-card">
-              <div className="settings-row" onClick={() => setShowCategoryPicker(!showCategoryPicker)}>
+              <div className="settings-row">
                 <div className="settings-row-left">
                   <div className="settings-row-icon" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' }}>
                     <PieChart size={16} />
@@ -972,31 +961,18 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
                   <span className="settings-row-label">Категория</span>
                 </div>
                 <div className="settings-row-value">
-                  <span>{formData.category}</span>
-                  <ChevronRight size={16} className={`settings-row-chevron ${showCategoryPicker ? 'open' : ''}`} />
+                  <select
+                    className="native-select"
+                    value={formData.category}
+                    onChange={e => setFormData({ ...formData, category: e.target.value })}
+                  >
+                    {allCategories.map(cat => (
+                      <option key={cat.id} value={cat.name}>{cat.name}</option>
+                    ))}
+                  </select>
+                  <ChevronRight size={16} className="settings-row-chevron" />
                 </div>
               </div>
-
-              {showCategoryPicker && (
-                <div className="period-dropdown-inline">
-                  {allCategories.map(cat => (
-                    <button
-                      key={cat.id}
-                      className={`period-dropdown-item ${formData.category === cat.name ? 'active' : ''}`}
-                      onClick={() => {
-                        setFormData({ ...formData, category: cat.name });
-                        setShowCategoryPicker(false);
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div className="category-color-dot-small" style={{ background: cat.color }} />
-                        <span>{cat.name}</span>
-                      </div>
-                      {formData.category === cat.name && <Check size={16} />}
-                    </button>
-                  ))}
-                </div>
-              )}
 
               <div className="settings-row-divider" />
 
@@ -1041,75 +1017,123 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
       />
 
       {/* Logo Editor Bottom Sheet */}
-      {showLogoSheet && (
-        <div className="logo-sheet-overlay" onClick={() => {
+      {showLogoSheet && (() => {
+        const closeLogoSheet = () => {
           setLogoSheetClosing(true);
           setLogoScaledUp(false);
           setTimeout(() => { setShowLogoSheet(false); setLogoSheetClosing(false); }, 280);
-        }}>
-          <div className={`logo-sheet ${logoSheetClosing ? 'closing' : ''}`} onClick={e => e.stopPropagation()}>
-            <div className="logo-sheet-handle" />
+        };
 
-            {/* Preview */}
-            <div className="logo-sheet-preview">
-              <Logo domain={null} emoji={formData.icon} color={formData.color} size={80} logoUrl={null} />
-            </div>
+        let sheetStartY = 0;
+        let sheetCurrentY = 0;
 
-            {/* Color Palette Row */}
-            <div className="logo-sheet-colors">
-              {COLOR_PALETTE.slice(0, 7).map(color => (
+        const handleSheetTouchStart = (e) => {
+          sheetStartY = e.touches[0].clientY;
+          sheetCurrentY = 0;
+        };
+        const handleSheetTouchMove = (e) => {
+          const diff = e.touches[0].clientY - sheetStartY;
+          sheetCurrentY = diff;
+          if (diff > 0) {
+            e.currentTarget.style.transform = `translateY(${diff}px)`;
+          }
+        };
+        const handleSheetTouchEnd = (e) => {
+          if (sheetCurrentY > 80) {
+            closeLogoSheet();
+          }
+          e.currentTarget.style.transform = '';
+          e.currentTarget.style.transition = 'transform 0.2s ease';
+          setTimeout(() => { if (e.currentTarget) e.currentTarget.style.transition = ''; }, 200);
+        };
+
+        return (
+          <div className="logo-sheet-overlay" onClick={(e) => {
+            e.stopPropagation();
+            closeLogoSheet();
+          }}>
+            <div
+              className={`logo-sheet ${logoSheetClosing ? 'closing' : ''}`}
+              onClick={e => e.stopPropagation()}
+              onTouchStart={handleSheetTouchStart}
+              onTouchMove={handleSheetTouchMove}
+              onTouchEnd={handleSheetTouchEnd}
+            >
+              <div className="logo-sheet-handle" />
+
+              {/* Preview */}
+              <div className="logo-sheet-preview">
+                <Logo domain={null} emoji={formData.icon} color={formData.color} size={80} logoUrl={null} />
+              </div>
+
+              {/* Color Palette Row */}
+              <div className="logo-sheet-colors">
+                {COLOR_PALETTE.slice(0, 7).map(color => (
+                  <button
+                    key={color}
+                    className={`logo-color-btn ${formData.color === color ? 'active' : ''}`}
+                    style={{ background: color }}
+                    onClick={() => setFormData({ ...formData, color, domain: null, logo_url: null })}
+                  />
+                ))}
+              </div>
+
+              {/* Tabs */}
+              <div className="logo-sheet-tabs">
                 <button
-                  key={color}
-                  className={`logo-color-btn ${formData.color === color ? 'active' : ''}`}
-                  style={{ background: color }}
-                  onClick={() => setFormData({ ...formData, color, domain: null, logo_url: null })}
-                />
-              ))}
-            </div>
+                  className={`logo-sheet-tab ${logoSheetTab === 'photo' ? 'active' : ''}`}
+                  onClick={() => setLogoSheetTab('photo')}
+                >
+                  Фото
+                </button>
+                <button
+                  className={`logo-sheet-tab ${logoSheetTab === 'emoji' ? 'active' : ''}`}
+                  onClick={() => setLogoSheetTab('emoji')}
+                >
+                  Эмодзи
+                </button>
+                <button
+                  className={`logo-sheet-tab ${logoSheetTab === 'symbols' ? 'active' : ''}`}
+                  onClick={() => setLogoSheetTab('symbols')}
+                >
+                  Символы
+                </button>
+              </div>
 
-            {/* Tabs */}
-            <div className="logo-sheet-tabs">
-              <button
-                className={`logo-sheet-tab ${logoSheetTab === 'emoji' ? 'active' : ''}`}
-                onClick={() => setLogoSheetTab('emoji')}
-              >
-                Эмодзи
-              </button>
-              <button
-                className={`logo-sheet-tab ${logoSheetTab === 'symbols' ? 'active' : ''}`}
-                onClick={() => setLogoSheetTab('symbols')}
-              >
-                Символы
-              </button>
-            </div>
-
-            {/* Grid */}
-            <div className="logo-sheet-grid">
-              {logoSheetTab === 'emoji' ? (
-                EMOJI_OPTIONS.map((em, i) => (
-                  <button
-                    key={em + i}
-                    className={`logo-grid-item ${formData.icon === em ? 'active' : ''}`}
-                    onClick={() => setFormData({ ...formData, icon: em, domain: null, logo_url: null })}
-                  >
-                    <span className="logo-grid-emoji">{em}</span>
-                  </button>
-                ))
-              ) : (
-                SYMBOL_OPTIONS.map(sym => (
-                  <button
-                    key={sym.name}
-                    className={`logo-grid-item ${formData.icon === 'symbol:' + sym.name ? 'active' : ''}`}
-                    onClick={() => setFormData({ ...formData, icon: 'symbol:' + sym.name, domain: null, logo_url: null })}
-                  >
-                    <sym.icon size={24} color="var(--text-primary)" strokeWidth={1.5} />
-                  </button>
-                ))
-              )}
+              {/* Grid */}
+              <div className="logo-sheet-grid">
+                {logoSheetTab === 'photo' ? (
+                  <div className="logo-sheet-placeholder">
+                    <Camera size={32} color="var(--text-secondary)" />
+                    <span>В разработке</span>
+                    <p>Загрузка фото будет доступна в следующем обновлении</p>
+                  </div>
+                ) : logoSheetTab === 'emoji' ? (
+                  EMOJI_OPTIONS.map((em, i) => (
+                    <button
+                      key={em + i}
+                      className={`logo-grid-item ${formData.icon === em ? 'active' : ''}`}
+                      onClick={() => setFormData({ ...formData, icon: em, domain: null, logo_url: null })}
+                    >
+                      <span className="logo-grid-emoji">{em}</span>
+                    </button>
+                  ))
+                ) : (
+                  SYMBOL_OPTIONS.map(sym => (
+                    <button
+                      key={sym.name}
+                      className={`logo-grid-item ${formData.icon === 'symbol:' + sym.name ? 'active' : ''}`}
+                      onClick={() => setFormData({ ...formData, icon: 'symbol:' + sym.name, domain: null, logo_url: null })}
+                    >
+                      <sym.icon size={24} color="var(--text-primary)" strokeWidth={1.5} />
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
@@ -1118,7 +1142,13 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
 // КОМПОНЕНТ: ЭКРАН АНАЛИТИКИ
 // ============================================
 const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
+  const [isClosing, setIsClosing] = useState(false);
   const [period, setPeriod] = useState('month');
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => onClose(), 280);
+  };
   
   const stats = useMemo(() => {
     let monthlyTotal = 0;
@@ -1195,9 +1225,9 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
   })).sort((a, b) => b.value - a.value);
 
   return (
-    <div className="analytics-screen">
+    <div className={`analytics-screen screen-enter ${isClosing ? 'screen-exit' : ''}`}>
       <div className="analytics-header">
-        <button className="back-btn" onClick={onClose}>
+        <button className="back-btn" onClick={handleClose}>
           <ArrowLeft size={20} />
         </button>
         <h2>Аналитика подписок</h2>
@@ -1480,7 +1510,13 @@ const CategoriesSheet = ({ visible, categories, customCategories, onAddCategory,
 const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, customCategories, onAddCategory, onDeleteCategory, theme, onToggleTheme, onClose }) => {
   const tg = getTelegram();
   const telegramUser = tg?.initDataUnsafe?.user;
+  const [isClosing, setIsClosing] = useState(false);
   const [showVersionInfo, setShowVersionInfo] = useState(false);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => onClose(), 280);
+  };
   const [showCategories, setShowCategories] = useState(false);
   const [showFirstReminderDropdown, setShowFirstReminderDropdown] = useState(false);
   const [showSecondReminderDropdown, setShowSecondReminderDropdown] = useState(false);
@@ -1514,9 +1550,9 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
   };
 
   return (
-    <div className="settings-screen">
+    <div className={`settings-screen screen-enter ${isClosing ? 'screen-exit' : ''}`}>
       <div className="settings-header">
-        <button className="back-btn" onClick={onClose}>
+        <button className="back-btn" onClick={handleClose}>
           <ArrowLeft size={20} />
         </button>
         <h2>Настройки</h2>
@@ -2986,6 +3022,25 @@ const styles = `
     to { transform: translateY(100%); }
   }
 
+  /* Screen transitions */
+  @keyframes screenSlideIn {
+    from { transform: translateX(100%); opacity: 0.8; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  @keyframes screenSlideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(-30%); opacity: 0; }
+  }
+
+  .screen-enter {
+    animation: screenSlideIn 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .screen-exit {
+    animation: screenSlideOut 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+
   .modal-header {
     display: flex;
     align-items: center;
@@ -3337,13 +3392,6 @@ const styles = `
   }
 
   .other-period-link.selected { color: var(--success); }
-
-  .category-color-dot-small {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
 
   .settings-row-hint {
     font-size: 0.6875rem;
@@ -3718,6 +3766,30 @@ const styles = `
     font-size: 1.5rem;
   }
 
+  .logo-sheet-placeholder {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 32px 16px;
+    text-align: center;
+  }
+
+  .logo-sheet-placeholder span {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .logo-sheet-placeholder p {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+    margin: 0;
+  }
+
   .settings-card {
     width: 100%;
     background: var(--bg-secondary);
@@ -3773,6 +3845,28 @@ const styles = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .native-select {
+    appearance: none;
+    -webkit-appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    font-weight: 500;
+    padding: 0;
+    outline: none;
+    cursor: pointer;
+    text-align: right;
+    direction: rtl;
+  }
+
+  .native-select option {
+    direction: ltr;
+    color: #000;
+    background: #fff;
   }
 
   .settings-row-value-input {
@@ -3833,45 +3927,6 @@ const styles = `
   }
 
   /* Period Dropdown (inline in card) */
-  .period-dropdown-inline {
-    padding: 4px 8px 8px;
-    animation: dropdownExpand 0.2s ease;
-    overflow: hidden;
-  }
-
-  @keyframes dropdownExpand {
-    from { opacity: 0; max-height: 0; }
-    to { opacity: 1; max-height: 500px; }
-  }
-
-  .period-dropdown-item {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 8px;
-    border: none;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: 0.9375rem;
-    font-weight: 500;
-    text-align: left;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: background 0.15s;
-  }
-
-  .period-dropdown-item:active {
-    background: var(--bg-tertiary);
-  }
-
-  .period-dropdown-item.active {
-    color: var(--accent);
-  }
-
-  .period-dropdown-item svg {
-    color: var(--accent);
-  }
 
   /* =============================================
      AMOUNT MODAL (Bottom Sheet)
