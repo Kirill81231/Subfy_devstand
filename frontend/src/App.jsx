@@ -53,28 +53,22 @@ const normalizeTemplate = (t) => ({
 });
 
 const CATEGORIES = [
-  { id: 'entertainment', name: 'Развлечения', color: '#8B5CF6' },
-  { id: 'work', name: 'Работа', color: '#3B82F6' },
-  { id: 'utilities', name: 'Утилиты', color: '#10B981' },
-  { id: 'education', name: 'Образование', color: '#F59E0B' },
-  { id: 'other', name: 'Другое', color: '#6B7280' },
+  { id: 'entertainment', name: 'Развлечения', color: '#EF4444' },
+  { id: 'productivity', name: 'Продуктивность', color: '#22C55E' },
+  { id: 'lifestyle', name: 'Лайфстайл', color: '#FBBF24' },
+  { id: 'utilities', name: 'Утилиты', color: '#3B82F6' },
+  { id: 'finance', name: 'Финансы', color: '#EAB308' },
+  { id: 'health', name: 'Здоровье', color: '#F97316' },
+  { id: 'gaming', name: 'Игры', color: '#EC4899' },
+  { id: 'other', name: 'Другое', color: '#9CA3AF' },
 ];
 
 const BILLING_CYCLES = [
   { value: 'monthly', label: 'Ежемесячно', multiplier: 1, short: 'мес', daysApprox: 30 },
   { value: 'yearly', label: 'Ежегодно', multiplier: 0.083, short: 'год', daysApprox: 365 },
-];
-
-const EXTRA_BILLING_CYCLES = [
-  { value: 'weekly', label: 'Еженедельно', multiplier: 4.33, short: 'нед', daysApprox: 7 },
-  { value: 'biweekly', label: 'Раз в 2 недели', multiplier: 2.17, short: '2 нед', daysApprox: 14 },
-  { value: 'quarterly', label: 'Раз в 3 месяца', multiplier: 0.33, short: 'квартал', daysApprox: 90 },
-  { value: 'semiannual', label: 'Раз в 6 месяцев', multiplier: 0.167, short: '6 мес', daysApprox: 180 },
-  { value: 'one-time', label: 'Одноразовая', multiplier: 0, short: 'раз', daysApprox: 0 },
   { value: 'trial', label: 'Пробная', multiplier: 0, short: 'проба', daysApprox: 0 },
+  { value: 'one-time', label: 'Одноразовая', multiplier: 0, short: 'раз', daysApprox: 0 },
 ];
-
-const ALL_BILLING_CYCLES = [...BILLING_CYCLES, ...EXTRA_BILLING_CYCLES];
 
 const CURRENCIES = [
   { code: 'RUB', symbol: '₽', rate: 1 },
@@ -85,14 +79,21 @@ const CURRENCIES = [
 const REMINDER_DAYS = [
   { value: 0, label: 'В день списания' },
   { value: 1, label: 'За 1 день' },
+  { value: 2, label: 'За 2 дня' },
   { value: 3, label: 'За 3 дня' },
-  { value: 7, label: 'За 7 дней' },
+  { value: 4, label: 'За 4 дня' },
+  { value: 5, label: 'За 5 дней' },
+  { value: 10, label: 'За 10 дней' },
+  { value: 15, label: 'За 15 дней' },
+  { value: 25, label: 'За 25 дней' },
+  { value: 30, label: 'За 30 дней' },
+  { value: -1, label: 'Никогда' },
 ];
 
-const REMINDER_TIMES = [
-  { value: 'morning', label: 'Утром (9:00)' },
-  { value: 'afternoon', label: 'Днём (14:00)' },
-  { value: 'evening', label: 'Вечером (19:00)' },
+const COLOR_PALETTE = [
+  '#EF4444', '#22C55E', '#FBBF24', '#3B82F6', '#EAB308', '#F97316', '#EC4899',
+  '#9CA3AF', '#F43F5E', '#2563EB', '#7C3AED', '#06B6D4', '#10B981', '#84CC16',
+  '#F59E0B', '#FB923C', '#A78BFA', '#67E8F9',
 ];
 
 const EMOJI_OPTIONS = ['📦', '🎮', '💼', '🏋️', '🎨', '📱', '🖥️', '🎧', '📚', '🎬', '🎵', '☁️', '🔒', '💳', '🛒', '✈️'];
@@ -461,7 +462,7 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
   const firstDate = subscription.first_billing_date || subscription.next_billing_date || subscription.firstBillingDate;
   const nextDate = calculateNextBillingDate(firstDate, billingCycle);
   const daysUntil = getDaysUntil(nextDate);
-  const cycle = ALL_BILLING_CYCLES.find(c => c.value === billingCycle) || ALL_BILLING_CYCLES[0];
+  const cycle = BILLING_CYCLES.find(c => c.value === billingCycle) || BILLING_CYCLES[0];
   
   // Конвертируем в месячную стоимость для отображения
   const monthlyAmount = subscription.amount * (cycle?.multiplier || 1);
@@ -559,35 +560,6 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
         }}
       />
     </>
-  );
-};
-
-// ============================================
-// КОМПОНЕНТ: МОДАЛЬНОЕ ОКНО ВЫБОРА ПЕРИОДА
-// ============================================
-const PeriodModal = ({ visible, onSelect, onClose, currentValue }) => {
-  if (!visible) return null;
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="period-modal" onClick={e => e.stopPropagation()}>
-        <div className="period-modal-header">
-          <h3>Другой период</h3>
-          <button className="close-btn" onClick={onClose}><X size={20} /></button>
-        </div>
-        <div className="period-options">
-          {EXTRA_BILLING_CYCLES.map(cycle => (
-            <button
-              key={cycle.value}
-              className={`period-option ${currentValue === cycle.value ? 'active' : ''}`}
-              onClick={() => { onSelect(cycle.value); onClose(); }}
-            >
-              {cycle.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 };
 
@@ -710,14 +682,17 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   const [step, setStep] = useState(editData ? 2 : 1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Все');
-  const [showCustomCategoryInput, setShowCustomCategoryInput] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
   const [isClosing, setIsClosing] = useState(false);
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [showAmountModal, setShowAmountModal] = useState(false);
   const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-  const [showNotificationDetails, setShowNotificationDetails] = useState(false);
+
+  // Fix viewport shrink on keyboard open
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+    if (tg) tg.expand();
+  }, []);
 
   const handleClose = () => {
     setIsClosing(true);
@@ -732,10 +707,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     firstBillingDate: editData.first_billing_date || editData.firstBillingDate,
     billingCycle: editData.billing_cycle || editData.billingCycle || 'monthly',
     category: editData.category || 'Другое',
-    notifyEnabled: editData.notify_enabled ?? false,
-    notifyDaysBefore: editData.notify_days_before ?? defaultNotificationSettings.daysBefore,
-    notifyOnDay: editData.notify_on_day ?? defaultNotificationSettings.notifyOnDay,
-    notifyTime: editData.notify_time ?? defaultNotificationSettings.time,
+    notifyEnabled: editData.notify_enabled ?? true,
   } : {
     name: '',
     amount: '',
@@ -748,13 +720,10 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     domain: null,
     logo_url: null,
     isCustom: true,
-    notifyEnabled: false,
-    notifyDaysBefore: defaultNotificationSettings.daysBefore,
-    notifyOnDay: defaultNotificationSettings.notifyOnDay,
-    notifyTime: defaultNotificationSettings.time,
+    notifyEnabled: true,
   });
 
-  const categories = ['Все', 'Развлечения', 'Работа', 'Утилиты', 'Образование', 'Другое'];
+  const categories = ['Все', ...CATEGORIES.map(c => c.name)];
 
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -789,18 +758,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
       first_billing_date: formData.firstBillingDate,
       billing_cycle: formData.billingCycle,
       notify_enabled: formData.notifyEnabled,
-      notify_days_before: formData.notifyDaysBefore,
-      notify_on_day: formData.notifyOnDay,
-      notify_time: formData.notifyTime,
     });
-  };
-
-  const getNotificationSummary = () => {
-    if (!formData.notifyEnabled) return 'Уведомления отключены';
-    const daysBefore = REMINDER_DAYS.find(d => d.value === formData.notifyDaysBefore)?.label || '';
-    const time = REMINDER_TIMES.find(t => t.value === formData.notifyTime)?.label?.split(' ')[0].toLowerCase() || '';
-    const onDay = formData.notifyOnDay && formData.notifyDaysBefore !== 0 ? ' и в день списания' : '';
-    return `Напомним ${daysBefore.toLowerCase()}${onDay}, ${time}`;
   };
 
   return (
@@ -918,13 +876,13 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               <div className="settings-row" onClick={() => setShowPeriodDropdown(!showPeriodDropdown)}>
                 <span className="settings-row-label">Периодичность</span>
                 <div className="settings-row-value">
-                  <span>{ALL_BILLING_CYCLES.find(c => c.value === formData.billingCycle)?.label || 'Ежемесячно'}</span>
+                  <span>{BILLING_CYCLES.find(c => c.value === formData.billingCycle)?.label || 'Ежемесячно'}</span>
                   <ChevronRight size={16} className={`settings-row-chevron ${showPeriodDropdown ? 'open' : ''}`} />
                 </div>
               </div>
               {showPeriodDropdown && (
                 <div className="period-dropdown-inline">
-                  {ALL_BILLING_CYCLES.map(cycle => (
+                  {BILLING_CYCLES.map(cycle => (
                     <button
                       key={cycle.value}
                       className={`period-dropdown-item ${formData.billingCycle === cycle.value ? 'active' : ''}`}
@@ -992,52 +950,20 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
                         className={`category-btn ${formData.category === cat.name ? 'active' : ''}`}
                         style={{ '--cat-color': cat.color }}
                         onClick={() => {
-                          if (cat.id === 'other') {
-                            setShowCustomCategoryInput(true);
-                          } else {
-                            setFormData({ ...formData, category: cat.name });
-                            setShowCustomCategoryInput(false);
-                            setShowCategoryPicker(false);
-                          }
+                          setFormData({ ...formData, category: cat.name });
+                          setShowCategoryPicker(false);
                         }}
                       >
                         {cat.name}
                       </button>
                     ))}
                   </div>
-                  {showCustomCategoryInput && (
-                    <div className="custom-category-input">
-                      <input
-                        type="text"
-                        value={newCategoryName}
-                        onChange={e => setNewCategoryName(e.target.value)}
-                        placeholder="Введите название категории"
-                        autoFocus
-                      />
-                      <button
-                        className="add-category-btn"
-                        onClick={() => {
-                          if (newCategoryName.trim()) {
-                            const trimmedName = newCategoryName.trim();
-                            onAddCategory && onAddCategory(trimmedName);
-                            setFormData({ ...formData, category: trimmedName });
-                            setNewCategoryName('');
-                            setShowCustomCategoryInput(false);
-                            setShowCategoryPicker(false);
-                          }
-                        }}
-                        disabled={!newCategoryName.trim()}
-                      >
-                        <Plus size={18} />
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 
               <div className="settings-row-divider" />
 
-              <div className="settings-row" onClick={() => setShowNotificationDetails(!showNotificationDetails)}>
+              <div className="settings-row" onClick={() => setFormData({ ...formData, notifyEnabled: !formData.notifyEnabled })}>
                 <div className="settings-row-left">
                   <div className="settings-row-icon" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }}>
                     <Bell size={16} />
@@ -1045,78 +971,11 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
                   <span className="settings-row-label">Уведомления</span>
                 </div>
                 <div className="settings-row-value">
-                  <span>{formData.notifyEnabled ? getNotificationSummary().split(',')[0] : 'Выключены'}</span>
-                  <ChevronRight size={16} className={`settings-row-chevron ${showNotificationDetails ? 'open' : ''}`} />
+                  <span>{formData.notifyEnabled ? 'По умолчанию' : 'Выключено'}</span>
+                  <ChevronRight size={16} className="settings-row-chevron" />
                 </div>
               </div>
             </div>
-
-            {/* Expanded notification settings */}
-            {showNotificationDetails && (
-              <div className="settings-card notification-expanded">
-                <div className="toggle-row">
-                  <span>Напоминать о списании</span>
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={formData.notifyEnabled}
-                      onChange={e => setFormData({ ...formData, notifyEnabled: e.target.checked })}
-                    />
-                    <span className="toggle-slider"></span>
-                  </label>
-                </div>
-
-                {formData.notifyEnabled && (
-                  <>
-                    <div className="form-section compact">
-                      <label>Когда напомнить</label>
-                      <div className="reminder-selector">
-                        {REMINDER_DAYS.map(day => (
-                          <button
-                            key={day.value}
-                            className={`reminder-btn ${formData.notifyDaysBefore === day.value ? 'active' : ''}`}
-                            onClick={() => setFormData({ ...formData, notifyDaysBefore: day.value })}
-                          >
-                            {day.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {formData.notifyDaysBefore !== 0 && (
-                      <div className="toggle-row">
-                        <span>Дополнительно в день списания</span>
-                        <label className="toggle">
-                          <input
-                            type="checkbox"
-                            checked={formData.notifyOnDay}
-                            onChange={e => setFormData({ ...formData, notifyOnDay: e.target.checked })}
-                          />
-                          <span className="toggle-slider"></span>
-                        </label>
-                      </div>
-                    )}
-
-                    <div className="form-section compact">
-                      <label>Время уведомления</label>
-                      <div className="time-selector">
-                        {REMINDER_TIMES.map(time => (
-                          <button
-                            key={time.value}
-                            className={`time-btn ${formData.notifyTime === time.value ? 'active' : ''}`}
-                            onClick={() => setFormData({ ...formData, notifyTime: time.value })}
-                          >
-                            {time.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <p className="notification-summary">{getNotificationSummary()}</p>
-              </div>
-            )}
 
             {/* Notes */}
             <div className="settings-card">
@@ -1162,7 +1021,7 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
     const categoryTotals = {};
     
     subscriptions.forEach(sub => {
-      const cycle = ALL_BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
+      const cycle = BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
       const currency = CURRENCIES.find(c => c.code === sub.currency);
       const amountInRub = sub.amount * (currency?.rate || 1);
       const monthly = amountInRub * (cycle?.multiplier || 1);
@@ -1184,7 +1043,7 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
   const topSubscriptions = useMemo(() => {
     return subscriptions
       .map(sub => {
-        const cycle = ALL_BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
+        const cycle = BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
         const currency = CURRENCIES.find(c => c.code === sub.currency);
         const amountInRub = sub.amount * (currency?.rate || 1);
         const monthly = amountInRub * (cycle?.multiplier || 1);
@@ -1345,57 +1204,141 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
 };
 
 // ============================================
+// КОМПОНЕНТ: CATEGORIES BOTTOM SHEET
+// ============================================
+const CategoriesSheet = ({ visible, categories, customCategories, onAddCategory, onDeleteCategory, onClose }) => {
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [selectedColor, setSelectedColor] = useState(COLOR_PALETTE[0]);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  useEffect(() => {
+    if (visible) setIsClosing(false);
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const allCats = [...categories, ...customCategories];
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => onClose(), 280);
+  };
+
+  const handleAdd = () => {
+    if (newCategoryName.trim()) {
+      onAddCategory(newCategoryName.trim(), selectedColor);
+      setNewCategoryName('');
+      setSelectedColor(COLOR_PALETTE[0]);
+    }
+  };
+
+  return (
+    <div className="categories-sheet-overlay" onClick={handleClose}>
+      <div className={`categories-sheet ${isClosing ? 'closing' : ''}`} onClick={e => e.stopPropagation()}>
+        <div className="categories-sheet-header">
+          <h3>Категории</h3>
+          <button className="amount-modal-close" onClick={handleClose}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="categories-list-wrapper">
+          <div className="settings-card">
+            {allCats.map((cat, i) => (
+              <React.Fragment key={cat.id}>
+                <div className="category-list-item">
+                  <span className="category-list-name">{cat.name}</span>
+                  <div className="category-color-dot" style={{ background: cat.color }} />
+                </div>
+                {i < allCats.length - 1 && <div className="settings-row-divider" />}
+              </React.Fragment>
+            ))}
+          </div>
+
+          <p className="categories-hint">Категория «Другое» не может быть удалена, так как является категорией по умолчанию для подписок без категории.</p>
+
+          <div className="new-category-row">
+            <div
+              className="category-color-dot clickable"
+              style={{ background: selectedColor }}
+              onClick={() => setShowColorPicker(!showColorPicker)}
+            />
+            <input
+              type="text"
+              className="new-category-input"
+              value={newCategoryName}
+              onChange={e => setNewCategoryName(e.target.value)}
+              placeholder="Новая категория"
+            />
+            <button
+              className="new-category-add-btn"
+              onClick={handleAdd}
+              disabled={!newCategoryName.trim()}
+            >
+              Добавить
+            </button>
+          </div>
+        </div>
+
+        {showColorPicker && (
+          <div className="color-picker-sheet">
+            <div className="color-picker-handle" />
+            <h4>Выберите цвет</h4>
+            <div className="color-palette">
+              {COLOR_PALETTE.map(color => (
+                <button
+                  key={color}
+                  className={`color-palette-item ${selectedColor === color ? 'active' : ''}`}
+                  style={{ background: color }}
+                  onClick={() => { setSelectedColor(color); setShowColorPicker(false); }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================
 // КОМПОНЕНТ: ЭКРАН НАСТРОЕК
 // ============================================
-const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, onClose }) => {
+const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, customCategories, onAddCategory, onDeleteCategory, theme, onToggleTheme, onClose }) => {
   const tg = getTelegram();
   const telegramUser = tg?.initDataUnsafe?.user;
   const [showVersionInfo, setShowVersionInfo] = useState(false);
-  const [settingsTab, setSettingsTab] = useState('profile');
+  const [showCategories, setShowCategories] = useState(false);
+  const [showFirstReminderDropdown, setShowFirstReminderDropdown] = useState(false);
+  const [showSecondReminderDropdown, setShowSecondReminderDropdown] = useState(false);
 
-  // Get user photo URL from Telegram
   const photoUrl = telegramUser?.photo_url || null;
   const displayName = telegramUser?.first_name
     ? `${telegramUser.first_name}${telegramUser.last_name ? ' ' + telegramUser.last_name : ''}`
     : user?.first_name || 'Пользователь';
   const telegramId = telegramUser?.id || user?.telegram_id || user?.id || '—';
 
-  const orderedCategories = useMemo(() => {
-    if (!appSettings?.categoryOrder) return categories || [];
-    return appSettings.categoryOrder
-      .map(id => (categories || []).find(c => c.id === id))
-      .filter(Boolean);
-  }, [categories, appSettings?.categoryOrder]);
+  const allCats = [...categories, ...customCategories];
+  const firstReminder = appSettings.firstReminder || { days: 1, time: '09:00' };
+  const secondReminder = appSettings.secondReminder || { days: -1, time: '09:00' };
 
-  const allOrderedCategories = useMemo(() => {
-    const ordered = [...orderedCategories];
-    (categories || []).forEach(cat => {
-      if (!ordered.some(c => c.id === cat.id)) {
-        ordered.push(cat);
-      }
-    });
-    return ordered;
-  }, [orderedCategories, categories]);
-
-  const hiddenCategories = appSettings?.hiddenCategories || [];
-
-  const moveCategory = (index, direction) => {
-    const order = allOrderedCategories.map(c => c.id);
-    const [item] = order.splice(index, 1);
-    order.splice(index + direction, 0, item);
-    onUpdateSettings(prev => ({ ...prev, categoryOrder: order }));
+  const updateFirstReminder = (field, value) => {
+    onUpdateSettings(prev => ({
+      ...prev,
+      firstReminder: { ...prev.firstReminder || { days: 1, time: '09:00' }, [field]: value },
+    }));
   };
 
-  const toggleCategoryVisibility = (catId) => {
-    onUpdateSettings(prev => {
-      const hidden = prev.hiddenCategories || [];
-      return {
-        ...prev,
-        hiddenCategories: hidden.includes(catId)
-          ? hidden.filter(id => id !== catId)
-          : [...hidden, catId],
-      };
-    });
+  const updateSecondReminder = (field, value) => {
+    onUpdateSettings(prev => ({
+      ...prev,
+      secondReminder: { ...prev.secondReminder || { days: -1, time: '09:00' }, [field]: value },
+    }));
+  };
+
+  const getReminderLabel = (days) => {
+    return REMINDER_DAYS.find(d => d.value === days)?.label || 'Никогда';
   };
 
   return (
@@ -1408,78 +1351,142 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, onClo
         <div style={{ width: 32 }} />
       </div>
 
-      {/* Settings Tabs */}
-      <div className="settings-tabs">
-        <button
-          className={`settings-tab ${settingsTab === 'profile' ? 'active' : ''}`}
-          onClick={() => setSettingsTab('profile')}
-        >
-          Профиль
-        </button>
-        <button
-          className={`settings-tab ${settingsTab === 'menu' ? 'active' : ''}`}
-          onClick={() => setSettingsTab('menu')}
-        >
-          Настройки меню
-        </button>
-      </div>
-
       <div className="settings-content">
-        {settingsTab === 'profile' ? (
-          <>
-            {/* User Profile */}
-            <div className="profile-section">
-              <div className="profile-avatar">
-                {photoUrl ? (
-                  <img src={photoUrl} alt="Avatar" />
-                ) : (
-                  <div className="avatar-placeholder">
-                    {displayName.charAt(0).toUpperCase()}
+        {/* Profile */}
+        <div className="profile-section">
+          <div className="profile-avatar">
+            {photoUrl ? (
+              <img src={photoUrl} alt="Avatar" />
+            ) : (
+              <div className="avatar-placeholder">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <h3 className="profile-name">{displayName}</h3>
+          <span className="profile-id">ID: {telegramId}</span>
+        </div>
+
+        {/* Categories */}
+        <div className="settings-section-label">КАТЕГОРИИ</div>
+        <div className="settings-card" onClick={() => setShowCategories(true)}>
+          <div className="settings-row">
+            <span className="settings-row-label">Категории</span>
+            <div className="settings-row-value">
+              <span>{allCats.length}</span>
+              <ChevronRight size={16} className="settings-row-chevron" />
+            </div>
+          </div>
+        </div>
+
+        {/* Notifications */}
+        <div className="settings-section-label">УВЕДОМЛЕНИЯ</div>
+        <div className="settings-card">
+          {/* First Reminder */}
+          <div className="settings-row notification-row">
+            <span className="settings-row-label">Первое уведомление</span>
+            <div className="notification-row-controls">
+              <div className="reminder-dropdown-wrapper">
+                <button className="reminder-dropdown-btn" onClick={() => { setShowFirstReminderDropdown(!showFirstReminderDropdown); setShowSecondReminderDropdown(false); }}>
+                  {getReminderLabel(firstReminder.days)}
+                  <ChevronRight size={14} className={`capsule-chevron ${showFirstReminderDropdown ? 'open' : ''}`} />
+                </button>
+                {showFirstReminderDropdown && (
+                  <div className="reminder-dropdown-list">
+                    {REMINDER_DAYS.map(day => (
+                      <button
+                        key={day.value}
+                        className={`reminder-dropdown-item ${firstReminder.days === day.value ? 'active' : ''}`}
+                        onClick={() => { updateFirstReminder('days', day.value); setShowFirstReminderDropdown(false); }}
+                      >
+                        {day.label}
+                        {firstReminder.days === day.value && <Check size={14} />}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
-              <h3 className="profile-name">{displayName}</h3>
-              <span className="profile-id">ID: {telegramId}</span>
+              {firstReminder.days !== -1 && (
+                <input
+                  type="time"
+                  className="time-input-capsule"
+                  value={firstReminder.time}
+                  onChange={e => updateFirstReminder('time', e.target.value)}
+                />
+              )}
             </div>
+          </div>
+          <div className="settings-row-divider" />
 
-            <div className="version-badge" onClick={() => setShowVersionInfo(true)}>
-              <span className="version-tag">Beta 0.1.12</span>
-              <ChevronRight size={14} />
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Category Management */}
-            <div className="settings-section">
-              <h3><Settings size={18} /> Категории на главном экране</h3>
-              <p className="settings-section-desc">Настройте порядок и видимость категорий</p>
-              <div className="category-manage-list">
-                {allOrderedCategories.map((cat, index) => (
-                  <div key={cat.id} className="category-manage-item">
-                    <div className="category-manage-dot" style={{ background: cat.color }} />
-                    <span className="category-manage-name">{cat.name}</span>
-                    <div className="category-manage-actions">
-                      <button onClick={() => moveCategory(index, -1)} disabled={index === 0}>
-                        <ChevronLeft size={16} style={{ transform: 'rotate(90deg)' }} />
+          {/* Second Reminder */}
+          <div className="settings-row notification-row">
+            <span className="settings-row-label">Второе уведомление</span>
+            <div className="notification-row-controls">
+              <div className="reminder-dropdown-wrapper">
+                <button className="reminder-dropdown-btn" onClick={() => { setShowSecondReminderDropdown(!showSecondReminderDropdown); setShowFirstReminderDropdown(false); }}>
+                  {getReminderLabel(secondReminder.days)}
+                  <ChevronRight size={14} className={`capsule-chevron ${showSecondReminderDropdown ? 'open' : ''}`} />
+                </button>
+                {showSecondReminderDropdown && (
+                  <div className="reminder-dropdown-list">
+                    {REMINDER_DAYS.map(day => (
+                      <button
+                        key={day.value}
+                        className={`reminder-dropdown-item ${secondReminder.days === day.value ? 'active' : ''}`}
+                        onClick={() => { updateSecondReminder('days', day.value); setShowSecondReminderDropdown(false); }}
+                      >
+                        {day.label}
+                        {secondReminder.days === day.value && <Check size={14} />}
                       </button>
-                      <button onClick={() => moveCategory(index, 1)} disabled={index === allOrderedCategories.length - 1}>
-                        <ChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
-                      </button>
-                      <label className="toggle small">
-                        <input
-                          type="checkbox"
-                          checked={!hiddenCategories.includes(cat.id)}
-                          onChange={() => toggleCategoryVisibility(cat.id)}
-                        />
-                        <span className="toggle-slider" />
-                      </label>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
+              {secondReminder.days !== -1 && (
+                <input
+                  type="time"
+                  className="time-input-capsule"
+                  value={secondReminder.time}
+                  onChange={e => updateSecondReminder('time', e.target.value)}
+                />
+              )}
             </div>
-          </>
-        )}
+          </div>
+          <div className="settings-row-divider" />
+
+          {/* Test Notification */}
+          <div className="settings-row">
+            <button className="test-notification-btn" onClick={() => {
+              window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
+              window.Telegram?.WebApp?.showAlert?.('Тестовое уведомление отправлено!');
+            }}>
+              Тест уведомлений
+            </button>
+          </div>
+        </div>
+        <p className="settings-hint">Если включен режим фокуса, уведомления могут не приходить.</p>
+
+        {/* Theme */}
+        <div className="settings-section-label">ОФОРМЛЕНИЕ</div>
+        <div className="settings-card">
+          <div className="settings-row">
+            <span className="settings-row-label">Тёмная тема</span>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={theme === 'dark'}
+                onChange={() => onToggleTheme()}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+        </div>
+
+        {/* Version */}
+        <div className="version-badge" onClick={() => setShowVersionInfo(true)}>
+          <span className="version-tag">Beta 0.1.12</span>
+          <ChevronRight size={14} />
+        </div>
       </div>
 
       {showVersionInfo && (
@@ -1505,6 +1512,15 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, onClo
           </div>
         </div>
       )}
+
+      <CategoriesSheet
+        visible={showCategories}
+        categories={categories}
+        customCategories={customCategories}
+        onAddCategory={onAddCategory}
+        onDeleteCategory={onDeleteCategory}
+        onClose={() => setShowCategories(false)}
+      />
     </div>
   );
 };
@@ -1667,12 +1683,8 @@ export default function SubfyApp() {
     const saved = localStorage.getItem('subfy_settings');
     const defaults = {
       notificationsEnabled: true,
-      defaultDaysBefore: 1,
-      defaultNotifyOnDay: true,
-      defaultTime: 'morning',
-      quietHoursEnabled: false,
-      quietHoursStart: '23:00',
-      quietHoursEnd: '08:00',
+      firstReminder: { days: 1, time: '09:00' },
+      secondReminder: { days: -1, time: '09:00' },
       categoryOrder: null,
       hiddenCategories: [],
     };
@@ -1685,22 +1697,25 @@ export default function SubfyApp() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Function to generate a random color for new categories
-  const generateCategoryColor = () => {
-    const colors = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#14B8A6', '#0EA5E9', '#8B5CF6', '#EC4899'];
-    return colors[Math.floor(Math.random() * colors.length)];
-  };
-
-  // Add a new custom category
-  const addCustomCategory = (name) => {
+  // Add a new custom category with chosen color
+  const addCustomCategory = (name, color = '#EF4444') => {
     const newCategory = {
       id: `custom-${Date.now()}`,
       name,
-      color: generateCategoryColor(),
+      color,
       isCustom: true,
     };
     setCustomCategories(prev => {
       const updated = [...prev, newCategory];
+      localStorage.setItem('subfy_custom_categories', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Delete a custom category
+  const deleteCustomCategory = (catId) => {
+    setCustomCategories(prev => {
+      const updated = prev.filter(c => c.id !== catId);
       localStorage.setItem('subfy_custom_categories', JSON.stringify(updated));
       return updated;
     });
@@ -1901,7 +1916,7 @@ export default function SubfyApp() {
   const stats = useMemo(() => {
     let monthlyTotal = 0;
     subscriptions.forEach(sub => {
-      const cycle = ALL_BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
+      const cycle = BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
       const currency = CURRENCIES.find(c => c.code === sub.currency);
       const amountInRub = sub.amount * (currency?.rate || 1);
       monthlyTotal += amountInRub * (cycle?.multiplier || 1);
@@ -1931,9 +1946,8 @@ export default function SubfyApp() {
   }, [subscriptions]);
 
   const defaultNotificationSettings = {
-    daysBefore: appSettings.defaultDaysBefore,
-    notifyOnDay: appSettings.defaultNotifyOnDay,
-    time: appSettings.defaultTime,
+    firstReminder: appSettings.firstReminder || { days: 1, time: '09:00' },
+    secondReminder: appSettings.secondReminder || { days: -1, time: '09:00' },
   };
 
   if (appState === 'loading') return <LoadingScreen message="Подключение..." />;
@@ -1969,6 +1983,11 @@ export default function SubfyApp() {
           appSettings={appSettings}
           onUpdateSettings={setAppSettings}
           categories={allCategories}
+          customCategories={customCategories}
+          onAddCategory={addCustomCategory}
+          onDeleteCategory={deleteCustomCategory}
+          theme={theme}
+          onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           onClose={() => setShowSettings(false)}
         />
       </div>
@@ -1983,9 +2002,6 @@ export default function SubfyApp() {
       <header className="app-header">
         <span className="logo">Subfy</span>
         <div className="header-actions">
-          <button className="icon-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
           <button className="icon-btn" onClick={() => setShowSettings(true)}>
             <Settings size={20} />
           </button>
@@ -2757,6 +2773,9 @@ const styles = `
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
+    height: 100vh;
+    height: 100dvh;
+    min-height: -webkit-fill-available;
   }
 
   @keyframes slideUp {
@@ -3370,7 +3389,7 @@ const styles = `
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
   }
 
   .card-form-logo {
@@ -3773,6 +3792,297 @@ const styles = `
 
   .amount-done-btn:active {
     transform: scale(0.98);
+  }
+
+  /* =============================================
+     CATEGORIES BOTTOM SHEET
+     ============================================= */
+  .categories-sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 1100;
+    animation: fadeOverlayIn 0.2s ease;
+  }
+
+  .categories-sheet {
+    width: 100%;
+    max-height: 85vh;
+    background: var(--bg-primary);
+    border-radius: 20px 20px 0 0;
+    padding: 20px 20px calc(20px + var(--tg-safe-area-bottom, 0px));
+    animation: amountSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .categories-sheet.closing {
+    animation: amountSlideDown 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+
+  .categories-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .categories-sheet-header h3 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    flex: 1;
+    text-align: center;
+  }
+
+  .categories-list-wrapper {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .category-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    min-height: 48px;
+  }
+
+  .category-list-name {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .category-color-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .category-color-dot.clickable {
+    cursor: pointer;
+    border: 2px solid var(--border);
+  }
+
+  .categories-hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin: 12px 0 16px;
+    line-height: 1.4;
+    padding: 0 4px;
+  }
+
+  .new-category-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 14px;
+  }
+
+  .new-category-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    outline: none;
+    font-family: inherit;
+  }
+
+  .new-category-input::placeholder {
+    color: var(--text-secondary);
+  }
+
+  .new-category-add-btn {
+    padding: 6px 14px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .new-category-add-btn:not(:disabled) {
+    color: var(--accent);
+  }
+
+  /* Color Picker Sheet */
+  .color-picker-sheet {
+    background: var(--bg-secondary);
+    border-radius: 20px 20px 0 0;
+    padding: 16px 20px 24px;
+    margin: 16px -20px calc(-20px - var(--tg-safe-area-bottom, 0px));
+    animation: amountSlideUp 0.2s ease;
+  }
+
+  .color-picker-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+
+  .color-picker-sheet h4 {
+    text-align: center;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+
+  .color-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  .color-palette-item {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+
+  .color-palette-item.active {
+    border-color: white;
+    transform: scale(1.1);
+  }
+
+  .color-palette-item:active {
+    transform: scale(0.9);
+  }
+
+  /* =============================================
+     SETTINGS SCREEN ADDITIONS
+     ============================================= */
+  .settings-section-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 16px 4px 8px;
+  }
+
+  .settings-hint {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+    padding: 8px 4px 0;
+    font-style: italic;
+  }
+
+  .notification-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .notification-row-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .reminder-dropdown-wrapper {
+    position: relative;
+  }
+
+  .reminder-dropdown-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border: none;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .reminder-dropdown-list {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    z-index: 20;
+    min-width: 160px;
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    animation: dropdownFadeIn 0.15s ease;
+  }
+
+  .reminder-dropdown-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .reminder-dropdown-item:active {
+    background: var(--bg-tertiary);
+  }
+
+  .reminder-dropdown-item.active {
+    color: var(--accent);
+  }
+
+  .reminder-dropdown-item svg {
+    color: var(--accent);
+  }
+
+  .time-input-capsule {
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border: none;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    outline: none;
+    font-family: inherit;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .test-notification-btn {
+    background: transparent;
+    border: none;
+    color: #F59E0B;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .test-notification-btn:active {
+    opacity: 0.7;
   }
 
   /* Period Modal */
