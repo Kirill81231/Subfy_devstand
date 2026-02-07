@@ -769,7 +769,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   
   const [formData, setFormData] = useState(editData ? {
     ...editData,
-    firstBillingDate: editData.first_billing_date || editData.firstBillingDate,
+    firstBillingDate: (editData.first_billing_date || editData.firstBillingDate || '').split('T')[0],
     billingCycle: editData.billing_cycle || editData.billingCycle || 'monthly',
     category: editData.category || 'Другое',
     notifyEnabled: editData.notify_enabled ?? true,
@@ -828,8 +828,8 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     <div className="modal-overlay" onClick={handleClose}>
       <div className={`modal subscription-modal ${isClosing ? 'closing' : ''}`} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <button className="back-btn" onClick={() => step === 1 ? handleClose() : setStep(1)}>
-            {step === 1 ? <X size={20} /> : <ChevronLeft size={20} />}
+          <button className="back-btn" onClick={() => (step === 1 || editData) ? handleClose() : setStep(1)}>
+            {(step === 1 || editData) ? <X size={20} /> : <ChevronLeft size={20} />}
           </button>
           <h2>{editData ? 'Редактировать' : step === 1 ? 'Выберите сервис' : 'Новая подписка'}</h2>
           <div style={{ width: 32 }} />
@@ -1527,8 +1527,6 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
     setTimeout(() => onClose(), 280);
   };
   const [showCategories, setShowCategories] = useState(false);
-  const [showFirstReminderDropdown, setShowFirstReminderDropdown] = useState(false);
-  const [showSecondReminderDropdown, setShowSecondReminderDropdown] = useState(false);
 
   const photoUrl = telegramUser?.photo_url || null;
   const displayName = telegramUser?.first_name
@@ -1603,26 +1601,15 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
           <div className="settings-row notification-row">
             <span className="settings-row-label">Первое уведомление</span>
             <div className="notification-row-controls">
-              <div className="reminder-dropdown-wrapper">
-                <button className="reminder-dropdown-btn" onClick={() => { setShowFirstReminderDropdown(!showFirstReminderDropdown); setShowSecondReminderDropdown(false); }}>
-                  {getReminderLabel(firstReminder.days)}
-                  <ChevronRight size={14} className={`capsule-chevron ${showFirstReminderDropdown ? 'open' : ''}`} />
-                </button>
-                {showFirstReminderDropdown && (
-                  <div className="reminder-dropdown-list">
-                    {REMINDER_DAYS.map(day => (
-                      <button
-                        key={day.value}
-                        className={`reminder-dropdown-item ${firstReminder.days === day.value ? 'active' : ''}`}
-                        onClick={() => { updateFirstReminder('days', day.value); setShowFirstReminderDropdown(false); }}
-                      >
-                        {day.label}
-                        {firstReminder.days === day.value && <Check size={14} />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <select
+                className="native-select"
+                value={firstReminder.days}
+                onChange={e => updateFirstReminder('days', parseInt(e.target.value))}
+              >
+                {REMINDER_DAYS.map(day => (
+                  <option key={day.value} value={day.value}>{day.label}</option>
+                ))}
+              </select>
               {firstReminder.days !== -1 && (
                 <input
                   type="time"
@@ -1639,26 +1626,15 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
           <div className="settings-row notification-row">
             <span className="settings-row-label">Второе уведомление</span>
             <div className="notification-row-controls">
-              <div className="reminder-dropdown-wrapper">
-                <button className="reminder-dropdown-btn" onClick={() => { setShowSecondReminderDropdown(!showSecondReminderDropdown); setShowFirstReminderDropdown(false); }}>
-                  {getReminderLabel(secondReminder.days)}
-                  <ChevronRight size={14} className={`capsule-chevron ${showSecondReminderDropdown ? 'open' : ''}`} />
-                </button>
-                {showSecondReminderDropdown && (
-                  <div className="reminder-dropdown-list">
-                    {REMINDER_DAYS.map(day => (
-                      <button
-                        key={day.value}
-                        className={`reminder-dropdown-item ${secondReminder.days === day.value ? 'active' : ''}`}
-                        onClick={() => { updateSecondReminder('days', day.value); setShowSecondReminderDropdown(false); }}
-                      >
-                        {day.label}
-                        {secondReminder.days === day.value && <Check size={14} />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <select
+                className="native-select"
+                value={secondReminder.days}
+                onChange={e => updateSecondReminder('days', parseInt(e.target.value))}
+              >
+                {REMINDER_DAYS.map(day => (
+                  <option key={day.value} value={day.value}>{day.label}</option>
+                ))}
+              </select>
               {secondReminder.days !== -1 && (
                 <input
                   type="time"
@@ -1701,7 +1677,7 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
 
         {/* Version */}
         <div className="version-badge" onClick={() => setShowVersionInfo(true)}>
-          <span className="version-tag">Beta 0.1.12</span>
+          <span className="version-tag">Beta 0.1.13</span>
           <ChevronRight size={14} />
         </div>
       </div>
@@ -1717,13 +1693,13 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
             </div>
             <div className="version-modal-body">
               <div className="version-logo">Subfy</div>
-              <span className="version-number">Beta 0.1.12</span>
-              <p className="version-desc">Трекер подписок в Telegram</p>
+              <span className="version-number">Beta 0.1.13</span>
+              <p className="version-desc">⚙️ Это бета‑версия приложения. Если вы заметили ошибку или баг — сообщите нам через Telegram‑бот</p>
               <button className="contact-btn" onClick={() => {
                 const tg = getTelegram();
-                tg?.openTelegramLink?.('https://t.me/subfy_support');
+                tg?.openTelegramLink?.('https://t.me/subfy_support_bot');
               }}>
-                Связаться
+                Написать в бот
               </button>
             </div>
           </div>
@@ -2205,42 +2181,37 @@ export default function SubfyApp() {
     );
   }
 
-  if (showAnalytics) {
-    return (
-      <div className={`app ${theme}`}>
-        <style>{styles}</style>
-        <AnalyticsScreen 
-          subscriptions={subscriptions} 
-          currencies={CURRENCIES} 
-          onClose={() => setShowAnalytics(false)} 
-        />
-      </div>
-    );
-  }
-
-  if (showSettings) {
-    return (
-      <div className={`app ${theme}`}>
-        <style>{styles}</style>
-        <SettingsScreen
-          user={user}
-          appSettings={appSettings}
-          onUpdateSettings={setAppSettings}
-          categories={allCategories}
-          customCategories={customCategories}
-          onAddCategory={addCustomCategory}
-          onDeleteCategory={deleteCategory}
-          theme={theme}
-          onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          onClose={() => setShowSettings(false)}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className={`app ${theme}`}>
       <style>{styles}</style>
+
+      {/* Overlay screens */}
+      {showAnalytics && (
+        <div className="screen-overlay">
+          <AnalyticsScreen
+            subscriptions={subscriptions}
+            currencies={CURRENCIES}
+            onClose={() => setShowAnalytics(false)}
+          />
+        </div>
+      )}
+
+      {showSettings && (
+        <div className="screen-overlay">
+          <SettingsScreen
+            user={user}
+            appSettings={appSettings}
+            onUpdateSettings={setAppSettings}
+            categories={allCategories}
+            customCategories={customCategories}
+            onAddCategory={addCustomCategory}
+            onDeleteCategory={deleteCategory}
+            theme={theme}
+            onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClose={() => setShowSettings(false)}
+          />
+        </div>
+      )}
 
       {/* Header */}
       <header className="app-header">
@@ -3042,12 +3013,19 @@ const styles = `
     to { transform: translateX(100%); opacity: 0.8; }
   }
 
+  .screen-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: var(--bg-primary);
+  }
+
   .screen-enter {
-    animation: screenSlideIn 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    animation: screenSlideIn 0.35s cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .screen-exit {
-    animation: screenSlideOut 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+    animation: screenSlideOut 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
   }
 
   .modal-header {
@@ -4373,68 +4351,6 @@ const styles = `
     gap: 8px;
   }
 
-  .reminder-dropdown-wrapper {
-    position: relative;
-  }
-
-  .reminder-dropdown-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
-    background: var(--bg-tertiary);
-    border: none;
-    border-radius: 8px;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--text-primary);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .reminder-dropdown-list {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 4px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    z-index: 20;
-    min-width: 160px;
-    max-height: 280px;
-    overflow-y: auto;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    animation: dropdownFadeIn 0.15s ease;
-  }
-
-  .reminder-dropdown-item {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    border: none;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .reminder-dropdown-item:active {
-    background: var(--bg-tertiary);
-  }
-
-  .reminder-dropdown-item.active {
-    color: var(--accent);
-  }
-
-  .reminder-dropdown-item svg {
-    color: var(--accent);
-  }
 
   .time-input-capsule {
     padding: 6px 12px;
