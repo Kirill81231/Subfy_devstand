@@ -70,6 +70,8 @@ const EXTRA_BILLING_CYCLES = [
   { value: 'biweekly', label: 'Раз в 2 недели', multiplier: 2.17, short: '2 нед', daysApprox: 14 },
   { value: 'quarterly', label: 'Раз в 3 месяца', multiplier: 0.33, short: 'квартал', daysApprox: 90 },
   { value: 'semiannual', label: 'Раз в 6 месяцев', multiplier: 0.167, short: '6 мес', daysApprox: 180 },
+  { value: 'one-time', label: 'Одноразовая', multiplier: 0, short: 'раз', daysApprox: 0 },
+  { value: 'trial', label: 'Пробная', multiplier: 0, short: 'проба', daysApprox: 0 },
 ];
 
 const ALL_BILLING_CYCLES = [...BILLING_CYCLES, ...EXTRA_BILLING_CYCLES];
@@ -106,6 +108,10 @@ const calculateNextBillingDate = (firstDate, cycle) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
+  if (cycle === 'one-time' || cycle === 'trial') {
+    return date > today ? date : null;
+  }
+
   while (date <= today) {
     switch (cycle) {
       case 'weekly': date.setDate(date.getDate() + 7); break;
@@ -137,6 +143,7 @@ const getBillingDatesInMonth = (startDate, cycle, year, month) => {
       case 'quarterly': d.setMonth(d.getMonth() + 3); break;
       case 'semiannual': d.setMonth(d.getMonth() + 6); break;
       case 'yearly': d.setFullYear(d.getFullYear() + 1); break;
+      case 'one-time': case 'trial': return;
       default: d.setMonth(d.getMonth() + 1);
     }
   };
@@ -585,17 +592,132 @@ const PeriodModal = ({ visible, onSelect, onClose, currentValue }) => {
 };
 
 // ============================================
+// КОМПОНЕНТ: МОДАЛ ВВОДА СУММЫ
+// ============================================
+const AmountModal = ({ visible, amount, currency, currencies, onAmountChange, onCurrencyChange, onClose }) => {
+  const [displayValue, setDisplayValue] = useState(amount ? String(amount) : '');
+  const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [bounceKey, setBounceKey] = useState(0);
+
+  useEffect(() => {
+    if (visible) {
+      setDisplayValue(amount ? String(amount) : '');
+      setIsClosing(false);
+      setShowCurrencyDropdown(false);
+    }
+  }, [visible, amount]);
+
+  if (!visible) return null;
+
+  const currencyObj = currencies.find(c => c.code === currency);
+
+  const handleDigit = (digit) => {
+    window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light');
+    setDisplayValue(prev => {
+      if (prev === '0' && digit !== '.') return digit;
+      if (digit === '.' && prev.includes('.')) return prev;
+      if (prev.includes('.') && prev.split('.')[1].length >= 2) return prev;
+      if (prev.replace('.', '').length >= 8) return prev;
+      return prev + digit;
+    });
+    setBounceKey(k => k + 1);
+  };
+
+  const handleBackspace = () => {
+    window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light');
+    setDisplayValue(prev => prev.slice(0, -1));
+    setBounceKey(k => k + 1);
+  };
+
+  const handleCloseModal = () => {
+    setIsClosing(true);
+    setTimeout(() => onClose(), 280);
+  };
+
+  const handleDone = () => {
+    const val = displayValue || '0';
+    onAmountChange(parseFloat(val) > 0 ? val : '');
+    handleCloseModal();
+  };
+
+  const formattedAmount = displayValue
+    ? `${currencyObj?.symbol || ''} ${displayValue}`
+    : `${currencyObj?.symbol || ''} 0`;
+
+  return (
+    <div className="amount-modal-overlay" onClick={handleCloseModal}>
+      <div className={`amount-modal ${isClosing ? 'closing' : ''}`} onClick={e => e.stopPropagation()}>
+        <div className="amount-modal-topbar">
+          <div className="currency-capsule-wrapper">
+            <button
+              className="currency-capsule"
+              onClick={() => setShowCurrencyDropdown(!showCurrencyDropdown)}
+            >
+              {currency} ({currencyObj?.symbol})
+              <ChevronRight size={14} className={`capsule-chevron ${showCurrencyDropdown ? 'open' : ''}`} />
+            </button>
+            {showCurrencyDropdown && (
+              <div className="currency-dropdown">
+                {currencies.map(c => (
+                  <button
+                    key={c.code}
+                    className={`currency-dropdown-item ${currency === c.code ? 'active' : ''}`}
+                    onClick={() => { onCurrencyChange(c.code); setShowCurrencyDropdown(false); }}
+                  >
+                    {c.code} ({c.symbol})
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button className="amount-modal-close" onClick={handleCloseModal}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="amount-display-section">
+          <span className="amount-display-label">Сумма</span>
+          <span className="amount-display-value" key={bounceKey}>
+            {formattedAmount}
+          </span>
+        </div>
+
+        <div className="numpad">
+          {['1','2','3','4','5','6','7','8','9','.','0','back'].map(key => (
+            <button
+              key={key}
+              className={`numpad-key ${key === 'back' ? 'numpad-back' : ''}`}
+              onClick={() => key === 'back' ? handleBackspace() : handleDigit(key)}
+            >
+              {key === 'back' ? <ArrowLeft size={24} /> : key}
+            </button>
+          ))}
+        </div>
+
+        <button className="amount-done-btn" onClick={handleDone}>
+          Готово
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
 // КОМПОНЕНТ: ФОРМА ПОДПИСКИ
 // ============================================
 const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, defaultNotificationSettings, customCategories = [], onAddCategory }) => {
   const [step, setStep] = useState(editData ? 2 : 1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Все');
-  const [showPeriodModal, setShowPeriodModal] = useState(false);
   const [showCustomCategoryInput, setShowCustomCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isClosing, setIsClosing] = useState(false);
   const [showLogoPicker, setShowLogoPicker] = useState(false);
+  const [showAmountModal, setShowAmountModal] = useState(false);
+  const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showNotificationDetails, setShowNotificationDetails] = useState(false);
 
   const handleClose = () => {
     setIsClosing(true);
@@ -673,9 +795,6 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     });
   };
 
-  const isExtraCycle = EXTRA_BILLING_CYCLES.some(c => c.value === formData.billingCycle);
-  const currentCycleLabel = ALL_BILLING_CYCLES.find(c => c.value === formData.billingCycle)?.label;
-
   const getNotificationSummary = () => {
     if (!formData.notifyEnabled) return 'Уведомления отключены';
     const daysBefore = REMINDER_DAYS.find(d => d.value === formData.notifyDaysBefore)?.label || '';
@@ -691,7 +810,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
           <button className="back-btn" onClick={() => step === 1 ? handleClose() : setStep(1)}>
             {step === 1 ? <X size={20} /> : <ChevronLeft size={20} />}
           </button>
-          <h2>{editData ? 'Редактировать' : step === 1 ? 'Выберите сервис' : 'Настройка'}</h2>
+          <h2>{editData ? 'Редактировать' : step === 1 ? 'Выберите сервис' : 'Новая подписка'}</h2>
           <div style={{ width: 32 }} />
         </div>
 
@@ -745,20 +864,15 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
             </div>
           </div>
         ) : (
-          <div className="subscription-form">
-            <div className="form-preview">
-              <div className="form-logo-btn" onClick={() => setShowLogoPicker(!showLogoPicker)}>
-                <Logo domain={formData.domain} emoji={formData.icon} color={formData.color} size={56} logoUrl={formData.logo_url} />
-                <div className="logo-edit-badge"><Edit3 size={12} /></div>
-              </div>
-              <div className="preview-info">
-                <h3>{formData.name || 'Название'}</h3>
-                <p>{formData.amount ? `${formData.amount} ${CURRENCIES.find(c => c.code === formData.currency)?.symbol}` : '0 ₽'}</p>
-              </div>
+          <div className="subscription-form card-form">
+            {/* Centered Logo */}
+            <div className="card-form-logo" onClick={() => setShowLogoPicker(!showLogoPicker)}>
+              <Logo domain={formData.domain} emoji={formData.icon} color={formData.color} size={72} logoUrl={formData.logo_url} />
+              <div className="logo-edit-badge"><Edit3 size={12} /></div>
             </div>
 
             {showLogoPicker && (
-              <div className="logo-picker">
+              <div className="settings-card" style={{ padding: 16 }}>
                 <div className="form-section">
                   <label>Иконка</label>
                   <div className="emoji-selector">
@@ -784,214 +898,254 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
                     <span>{formData.color}</span>
                   </div>
                 </div>
-                <button className="upload-photo-btn" disabled>
-                  <Camera size={18} />
-                  Загрузить фото
-                  <span className="badge-dev">В разработке</span>
-                </button>
               </div>
             )}
 
-            {formData.isCustom && (
-              <div className="form-section">
-                <label>Название</label>
+            {/* Card 1: Name, Period, Date */}
+            <div className="settings-card">
+              <div className="settings-row">
+                <span className="settings-row-label">Название</span>
                 <input
+                  className="settings-row-value-input"
                   type="text"
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Название подписки"
+                  placeholder="Название"
                 />
               </div>
-            )}
+              <div className="settings-row-divider" />
 
-            <div className="form-section">
-              <label>Сумма</label>
-              <div className="amount-row">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  className="amount-input"
-                  value={formData.amount}
-                  onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                  placeholder="299"
-                />
-                <div className="currency-selector-compact">
-                  {CURRENCIES.map(cur => (
+              <div className="settings-row" onClick={() => setShowPeriodDropdown(!showPeriodDropdown)}>
+                <span className="settings-row-label">Периодичность</span>
+                <div className="settings-row-value">
+                  <span>{ALL_BILLING_CYCLES.find(c => c.value === formData.billingCycle)?.label || 'Ежемесячно'}</span>
+                  <ChevronRight size={16} className={`settings-row-chevron ${showPeriodDropdown ? 'open' : ''}`} />
+                </div>
+              </div>
+              {showPeriodDropdown && (
+                <div className="period-dropdown-inline">
+                  {ALL_BILLING_CYCLES.map(cycle => (
                     <button
-                      key={cur.code}
-                      className={`currency-btn-sm ${formData.currency === cur.code ? 'active' : ''}`}
-                      onClick={() => setFormData({ ...formData, currency: cur.code })}
+                      key={cycle.value}
+                      className={`period-dropdown-item ${formData.billingCycle === cycle.value ? 'active' : ''}`}
+                      onClick={() => {
+                        setFormData({ ...formData, billingCycle: cycle.value });
+                        setShowPeriodDropdown(false);
+                      }}
                     >
-                      {cur.symbol}
+                      {cycle.label}
+                      {formData.billingCycle === cycle.value && <Check size={16} />}
                     </button>
                   ))}
                 </div>
-              </div>
-            </div>
-
-            <div className="form-section">
-              <label>Периодичность</label>
-              <div className="cycle-selector-main">
-                {BILLING_CYCLES.map(cycle => (
-                  <button
-                    key={cycle.value}
-                    className={`cycle-btn ${formData.billingCycle === cycle.value ? 'active' : ''}`}
-                    onClick={() => setFormData({ ...formData, billingCycle: cycle.value })}
-                  >
-                    {cycle.label}
-                  </button>
-                ))}
-              </div>
-              <button 
-                className={`other-period-link ${isExtraCycle ? 'selected' : ''}`}
-                onClick={() => setShowPeriodModal(true)}
-              >
-                {isExtraCycle ? currentCycleLabel : 'Другой период'}
-                <ChevronRight size={16} />
-              </button>
-            </div>
-
-            <div className="form-section">
-              <label>Дата первого списания</label>
-              <input
-                type="date"
-                value={formData.firstBillingDate}
-                onChange={e => setFormData({ ...formData, firstBillingDate: e.target.value })}
-              />
-            </div>
-
-            <div className="form-section">
-              <label>Категория</label>
-              <div className="category-selector">
-                {allCategories.map(cat => (
-                  <button
-                    key={cat.id}
-                    className={`category-btn ${formData.category === cat.name ? 'active' : ''}`}
-                    style={{ '--cat-color': cat.color }}
-                    onClick={() => {
-                      if (cat.id === 'other') {
-                        setShowCustomCategoryInput(true);
-                      } else {
-                        setFormData({ ...formData, category: cat.name });
-                        setShowCustomCategoryInput(false);
-                      }
-                    }}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-              {showCustomCategoryInput && (
-                <div className="custom-category-input">
-                  <input
-                    type="text"
-                    value={newCategoryName}
-                    onChange={e => setNewCategoryName(e.target.value)}
-                    placeholder="Введите название категории"
-                    autoFocus
-                  />
-                  <button
-                    className="add-category-btn"
-                    onClick={() => {
-                      if (newCategoryName.trim()) {
-                        const trimmedName = newCategoryName.trim();
-                        onAddCategory && onAddCategory(trimmedName);
-                        setFormData({ ...formData, category: trimmedName });
-                        setNewCategoryName('');
-                        setShowCustomCategoryInput(false);
-                      }
-                    }}
-                    disabled={!newCategoryName.trim()}
-                  >
-                    <Plus size={18} />
-                  </button>
-                </div>
               )}
+              <div className="settings-row-divider" />
+
+              <div className="settings-row">
+                <span className="settings-row-label">Дата начала</span>
+                <input
+                  type="date"
+                  className="settings-date-input"
+                  value={formData.firstBillingDate}
+                  onChange={e => setFormData({ ...formData, firstBillingDate: e.target.value })}
+                />
+              </div>
             </div>
 
-            {/* Блок уведомлений */}
-            <div className="notification-section">
-              <div className="notification-header">
-                <Bell size={18} />
-                <span>Уведомления по этой подписке</span>
+            {/* Card 2: Amount */}
+            <div className="settings-card" onClick={() => setShowAmountModal(true)}>
+              <div className="settings-row">
+                <span className="settings-row-label">Сумма</span>
+                <div className="settings-row-value">
+                  <span>
+                    {formData.amount
+                      ? `${CURRENCIES.find(c => c.code === formData.currency)?.symbol} ${formData.amount} (${formData.currency})`
+                      : `${CURRENCIES.find(c => c.code === formData.currency)?.symbol} 0.00 (${formData.currency})`
+                    }
+                  </span>
+                  <ChevronRight size={16} className="settings-row-chevron" />
+                </div>
               </div>
-              
-              <div className="toggle-row">
-                <span>Напоминать о списании</span>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={formData.notifyEnabled}
-                    onChange={e => setFormData({ ...formData, notifyEnabled: e.target.checked })}
-                  />
-                  <span className="toggle-slider"></span>
-                </label>
-              </div>
+            </div>
 
-              {formData.notifyEnabled && (
-                <>
-                  <div className="form-section compact">
-                    <label>Когда напомнить</label>
-                    <div className="reminder-selector">
-                      {REMINDER_DAYS.map(day => (
-                        <button
-                          key={day.value}
-                          className={`reminder-btn ${formData.notifyDaysBefore === day.value ? 'active' : ''}`}
-                          onClick={() => setFormData({ ...formData, notifyDaysBefore: day.value })}
-                        >
-                          {day.label}
-                        </button>
-                      ))}
-                    </div>
+            {/* Card 3: Category, Notifications */}
+            <div className="settings-card">
+              <div className="settings-row" onClick={() => setShowCategoryPicker(!showCategoryPicker)}>
+                <div className="settings-row-left">
+                  <div className="settings-row-icon" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' }}>
+                    <PieChart size={16} />
                   </div>
+                  <span className="settings-row-label">Категория</span>
+                </div>
+                <div className="settings-row-value">
+                  <span>{formData.category}</span>
+                  <ChevronRight size={16} className={`settings-row-chevron ${showCategoryPicker ? 'open' : ''}`} />
+                </div>
+              </div>
 
-                  {formData.notifyDaysBefore !== 0 && (
-                    <div className="toggle-row">
-                      <span>Дополнительно в день списания</span>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={formData.notifyOnDay}
-                          onChange={e => setFormData({ ...formData, notifyOnDay: e.target.checked })}
-                        />
-                        <span className="toggle-slider"></span>
-                      </label>
+              {showCategoryPicker && (
+                <div className="settings-card-expand">
+                  <div className="category-selector">
+                    {allCategories.map(cat => (
+                      <button
+                        key={cat.id}
+                        className={`category-btn ${formData.category === cat.name ? 'active' : ''}`}
+                        style={{ '--cat-color': cat.color }}
+                        onClick={() => {
+                          if (cat.id === 'other') {
+                            setShowCustomCategoryInput(true);
+                          } else {
+                            setFormData({ ...formData, category: cat.name });
+                            setShowCustomCategoryInput(false);
+                            setShowCategoryPicker(false);
+                          }
+                        }}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                  {showCustomCategoryInput && (
+                    <div className="custom-category-input">
+                      <input
+                        type="text"
+                        value={newCategoryName}
+                        onChange={e => setNewCategoryName(e.target.value)}
+                        placeholder="Введите название категории"
+                        autoFocus
+                      />
+                      <button
+                        className="add-category-btn"
+                        onClick={() => {
+                          if (newCategoryName.trim()) {
+                            const trimmedName = newCategoryName.trim();
+                            onAddCategory && onAddCategory(trimmedName);
+                            setFormData({ ...formData, category: trimmedName });
+                            setNewCategoryName('');
+                            setShowCustomCategoryInput(false);
+                            setShowCategoryPicker(false);
+                          }
+                        }}
+                        disabled={!newCategoryName.trim()}
+                      >
+                        <Plus size={18} />
+                      </button>
                     </div>
                   )}
-
-                  <div className="form-section compact">
-                    <label>Время уведомления</label>
-                    <div className="time-selector">
-                      {REMINDER_TIMES.map(time => (
-                        <button
-                          key={time.value}
-                          className={`time-btn ${formData.notifyTime === time.value ? 'active' : ''}`}
-                          onClick={() => setFormData({ ...formData, notifyTime: time.value })}
-                        >
-                          {time.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
+                </div>
               )}
-              
-              <p className="notification-summary">{getNotificationSummary()}</p>
+
+              <div className="settings-row-divider" />
+
+              <div className="settings-row" onClick={() => setShowNotificationDetails(!showNotificationDetails)}>
+                <div className="settings-row-left">
+                  <div className="settings-row-icon" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }}>
+                    <Bell size={16} />
+                  </div>
+                  <span className="settings-row-label">Уведомления</span>
+                </div>
+                <div className="settings-row-value">
+                  <span>{formData.notifyEnabled ? getNotificationSummary().split(',')[0] : 'Выключены'}</span>
+                  <ChevronRight size={16} className={`settings-row-chevron ${showNotificationDetails ? 'open' : ''}`} />
+                </div>
+              </div>
             </div>
 
+            {/* Expanded notification settings */}
+            {showNotificationDetails && (
+              <div className="settings-card notification-expanded">
+                <div className="toggle-row">
+                  <span>Напоминать о списании</span>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={formData.notifyEnabled}
+                      onChange={e => setFormData({ ...formData, notifyEnabled: e.target.checked })}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
+
+                {formData.notifyEnabled && (
+                  <>
+                    <div className="form-section compact">
+                      <label>Когда напомнить</label>
+                      <div className="reminder-selector">
+                        {REMINDER_DAYS.map(day => (
+                          <button
+                            key={day.value}
+                            className={`reminder-btn ${formData.notifyDaysBefore === day.value ? 'active' : ''}`}
+                            onClick={() => setFormData({ ...formData, notifyDaysBefore: day.value })}
+                          >
+                            {day.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {formData.notifyDaysBefore !== 0 && (
+                      <div className="toggle-row">
+                        <span>Дополнительно в день списания</span>
+                        <label className="toggle">
+                          <input
+                            type="checkbox"
+                            checked={formData.notifyOnDay}
+                            onChange={e => setFormData({ ...formData, notifyOnDay: e.target.checked })}
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    )}
+
+                    <div className="form-section compact">
+                      <label>Время уведомления</label>
+                      <div className="time-selector">
+                        {REMINDER_TIMES.map(time => (
+                          <button
+                            key={time.value}
+                            className={`time-btn ${formData.notifyTime === time.value ? 'active' : ''}`}
+                            onClick={() => setFormData({ ...formData, notifyTime: time.value })}
+                          >
+                            {time.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <p className="notification-summary">{getNotificationSummary()}</p>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div className="settings-card">
+              <div className="settings-row">
+                <textarea
+                  className="settings-notes-input"
+                  placeholder="Заметки"
+                  rows={2}
+                />
+              </div>
+            </div>
+
+            {/* Save button */}
             <button className="save-btn" onClick={handleSave} disabled={isLoading || !formData.name || !formData.amount}>
-              {isLoading ? <Loader className="spin" size={20} /> : <Check size={20} />}
-              {editData ? 'Сохранить' : 'Добавить'}
+              {isLoading ? <Loader className="spin" size={20} /> : null}
+              {editData ? 'Сохранить' : 'Добавить подписку'}
             </button>
           </div>
         )}
       </div>
-      
-      <PeriodModal
-        visible={showPeriodModal}
-        currentValue={formData.billingCycle}
-        onSelect={(value) => setFormData({ ...formData, billingCycle: value })}
-        onClose={() => setShowPeriodModal(false)}
+
+      <AmountModal
+        visible={showAmountModal}
+        amount={formData.amount}
+        currency={formData.currency}
+        currencies={CURRENCIES}
+        onAmountChange={(val) => setFormData({ ...formData, amount: val })}
+        onCurrencyChange={(code) => setFormData({ ...formData, currency: code })}
+        onClose={() => setShowAmountModal(false)}
       />
     </div>
   );
@@ -3208,6 +3362,418 @@ const styles = `
   }
 
   .save-btn:disabled { opacity: 0.6; }
+
+  /* =============================================
+     CARD-BASED FORM LAYOUT
+     ============================================= */
+  .card-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .card-form-logo {
+    position: relative;
+    cursor: pointer;
+    margin: 8px 0 4px;
+  }
+
+  .card-form-logo .logo-edit-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 22px;
+    height: 22px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    border: 2px solid var(--bg-primary);
+  }
+
+  .settings-card {
+    width: 100%;
+    background: var(--bg-secondary);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    min-height: 48px;
+    cursor: pointer;
+    gap: 12px;
+  }
+
+  .settings-row-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .settings-row-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .settings-row-label {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .settings-row-value {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 0.9375rem;
+    min-width: 0;
+  }
+
+  .settings-row-value span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-row-value-input {
+    text-align: right;
+    border: none;
+    background: transparent;
+    padding: 0;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    outline: none;
+    width: 100%;
+    min-width: 0;
+    font-family: inherit;
+  }
+
+  .settings-row-value-input::placeholder {
+    color: var(--text-secondary);
+  }
+
+  .settings-row-chevron {
+    color: var(--text-secondary);
+    opacity: 0.4;
+    flex-shrink: 0;
+    transition: transform 0.2s;
+  }
+
+  .settings-row-chevron.open {
+    transform: rotate(90deg);
+  }
+
+  .settings-row-divider {
+    height: 0.5px;
+    background: var(--border);
+    margin-left: 16px;
+  }
+
+  .settings-date-input {
+    border: none;
+    background: transparent;
+    padding: 0;
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
+    outline: none;
+    text-align: right;
+    -webkit-appearance: none;
+    appearance: none;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .settings-card-expand {
+    padding: 8px 16px 16px;
+  }
+
+  .settings-notes-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 0;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    outline: none;
+    font-family: inherit;
+    resize: none;
+  }
+
+  .settings-notes-input::placeholder {
+    color: var(--text-secondary);
+  }
+
+  .notification-expanded {
+    padding: 16px;
+  }
+
+  /* Period Dropdown (inline in card) */
+  .period-dropdown-inline {
+    padding: 4px 8px 8px;
+  }
+
+  .period-dropdown-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.15s;
+  }
+
+  .period-dropdown-item:active {
+    background: var(--bg-tertiary);
+  }
+
+  .period-dropdown-item.active {
+    color: var(--accent);
+  }
+
+  .period-dropdown-item svg {
+    color: var(--accent);
+  }
+
+  /* =============================================
+     AMOUNT MODAL (Bottom Sheet)
+     ============================================= */
+  .amount-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 1100;
+    animation: fadeOverlayIn 0.2s ease;
+  }
+
+  @keyframes fadeOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .amount-modal {
+    width: 100%;
+    background: var(--bg-primary);
+    border-radius: 20px 20px 0 0;
+    padding: 20px 20px calc(20px + var(--tg-safe-area-bottom, 0px));
+    animation: amountSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .amount-modal.closing {
+    animation: amountSlideDown 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+
+  @keyframes amountSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  @keyframes amountSlideDown {
+    from { transform: translateY(0); }
+    to { transform: translateY(100%); }
+  }
+
+  .amount-modal-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .currency-capsule-wrapper {
+    position: relative;
+  }
+
+  .currency-capsule {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 14px;
+    background: var(--bg-secondary);
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  .capsule-chevron {
+    transition: transform 0.2s;
+  }
+
+  .capsule-chevron.open {
+    transform: rotate(90deg);
+  }
+
+  .currency-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    z-index: 10;
+    min-width: 140px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    animation: dropdownFadeIn 0.15s ease;
+  }
+
+  @keyframes dropdownFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .currency-dropdown-item {
+    width: 100%;
+    padding: 12px 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .currency-dropdown-item:active {
+    background: var(--bg-tertiary);
+  }
+
+  .currency-dropdown-item.active {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .amount-modal-close {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+
+  .amount-modal-close:active {
+    background: var(--bg-tertiary);
+  }
+
+  .amount-display-section {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  .amount-display-label {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+
+  .amount-display-value {
+    display: inline-block;
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    animation: amountBounce 0.15s ease;
+    letter-spacing: -0.02em;
+  }
+
+  @keyframes amountBounce {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+  }
+
+  /* Numpad */
+  .numpad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .numpad-key {
+    height: 56px;
+    border: none;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 1.375rem;
+    font-weight: 600;
+    border-radius: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s ease, background 0.1s ease;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  .numpad-key:active {
+    transform: scale(0.92);
+    background: var(--bg-tertiary);
+  }
+
+  .numpad-back {
+    background: transparent;
+  }
+
+  .numpad-back:active {
+    background: var(--bg-secondary);
+    transform: scale(0.92);
+  }
+
+  .amount-done-btn {
+    width: 100%;
+    padding: 16px;
+    background: white;
+    color: #000;
+    border: none;
+    border-radius: 14px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.1s ease;
+  }
+
+  .amount-done-btn:active {
+    transform: scale(0.98);
+  }
 
   /* Period Modal */
   .period-modal {
