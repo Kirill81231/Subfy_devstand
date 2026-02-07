@@ -988,7 +988,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
                   </div>
                   <div>
                     <span className="settings-row-label">Уведомления</span>
-                    <p className="settings-row-hint">Настроить можно в настройках</p>
+                    <p className="settings-row-hint">Приходят через Telegram‑бот. Не блокируйте ему уведомления</p>
                   </div>
                 </div>
                 <label className="toggle" onClick={e => e.stopPropagation()}>
@@ -3017,7 +3017,6 @@ const styles = `
     position: fixed;
     inset: 0;
     z-index: 900;
-    background: var(--bg-primary);
   }
 
   .screen-enter {
@@ -4435,6 +4434,7 @@ const styles = `
     display: flex;
     flex-direction: column;
     height: 100%;
+    background: var(--bg-primary);
   }
 
   .analytics-header, .settings-header {
