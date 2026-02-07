@@ -899,7 +899,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               <div className="template-grid">
                 {filteredTemplates.map(template => (
                   <button key={template.id} className="template-item" onClick={() => selectTemplate(template)}>
-                    <Logo domain={template.domain} emoji={template.icon} color={template.color} size={40} logoUrl={template.logo_url} />
+                    <Logo domain={template.domain} emoji={template.icon} color={template.color} size={48} logoUrl={template.logo_url} />
                     <span>{template.name}</span>
                   </button>
                 ))}
@@ -3227,36 +3227,43 @@ const styles = `
 
   .template-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 10px;
+  }
+
+  @media (min-width: 480px) {
+    .template-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  @media (min-width: 768px) {
+    .template-grid { grid-template-columns: repeat(4, 1fr); }
   }
 
   .template-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 12px 6px;
+    gap: 8px;
+    padding: 16px 8px;
     background: var(--bg-secondary);
     border: 2px solid transparent;
-    border-radius: 14px;
+    border-radius: 16px;
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .template-item:active { transform: scale(0.97); }
 
-
   .template-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  .template-item span { font-size: 0.6875rem; font-weight: 600; text-align: center; line-height: 1.2; }
+  .template-item span { font-size: 0.8125rem; font-weight: 600; text-align: center; line-height: 1.3; }
 
   /* Subscription Form */
   .subscription-form {
