@@ -96,8 +96,13 @@ const COLOR_PALETTE = [
   '#F59E0B', '#FB923C', '#A78BFA', '#67E8F9',
 ];
 
-const EMOJI_OPTIONS = ['📦', '🎮', '💼', '🏋️', '🎨', '📱', '🖥️', '🎧', '📚', '🎬', '🎵', '☁️', '🔒', '💳', '🛒', '✈️',
-  '🏠', '🚗', '✈️', '🍔', '☕', '🍕', '🎯', '💡', '🔑', '⭐', '🎓', '💊', '🏀', '🎸', '📷'];
+const EMOJI_OPTIONS = [
+  '🎬', '🎵', '🎮', '📱', '🖥️', '🎧', '📚', '☁️', '💳', '🛒',
+  '🏠', '🚗', '✈️', '🍔', '☕', '🍕', '💡', '⭐', '🎓', '💊',
+  '🏀', '🎸', '📷', '🎨', '💼', '🏋️', '🔒', '🔑', '📦', '🎯',
+  '🍿', '📺', '🎤', '🎹', '🕹️', '📰', '💎', '🛡️', '🔔', '💰',
+  '🧘', '🚀', '🌍', '❤️', '🐾', '🧠', '🎁', '📧', '🏦', '🛠️',
+];
 
 const SYMBOL_OPTIONS = [
   { name: 'credit-card', icon: CreditCard },
@@ -1026,20 +1031,24 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
 
         let sheetStartY = 0;
         let sheetCurrentY = 0;
+        let canSwipeClose = false;
 
         const handleSheetTouchStart = (e) => {
           sheetStartY = e.touches[0].clientY;
           sheetCurrentY = 0;
+          // Only allow swipe-close if the grid is at the top
+          const grid = e.currentTarget.querySelector('.logo-sheet-grid');
+          canSwipeClose = !grid || grid.scrollTop <= 0;
         };
         const handleSheetTouchMove = (e) => {
           const diff = e.touches[0].clientY - sheetStartY;
           sheetCurrentY = diff;
-          if (diff > 0) {
+          if (canSwipeClose && diff > 0) {
             e.currentTarget.style.transform = `translateY(${diff}px)`;
           }
         };
         const handleSheetTouchEnd = (e) => {
-          if (sheetCurrentY > 80) {
+          if (canSwipeClose && sheetCurrentY > 80) {
             closeLogoSheet();
           }
           e.currentTarget.style.transform = '';
@@ -1354,7 +1363,7 @@ const CategoriesSheet = ({ visible, categories, customCategories, onAddCategory,
 
   if (!visible) return null;
 
-  const allCats = [...categories, ...customCategories];
+  const allCats = categories;
 
   const handleClose = () => {
     setIsClosing(true);
@@ -1527,7 +1536,7 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
     : user?.first_name || 'Пользователь';
   const telegramId = telegramUser?.id || user?.telegram_id || user?.id || '—';
 
-  const allCats = [...categories, ...customCategories];
+  const allCats = categories;
   const firstReminder = appSettings.firstReminder || { days: 1, time: '09:00' };
   const secondReminder = appSettings.secondReminder || { days: -1, time: '09:00' };
 
@@ -3030,7 +3039,7 @@ const styles = `
 
   @keyframes screenSlideOut {
     from { transform: translateX(0); opacity: 1; }
-    to { transform: translateX(-30%); opacity: 0; }
+    to { transform: translateX(100%); opacity: 0.8; }
   }
 
   .screen-enter {
