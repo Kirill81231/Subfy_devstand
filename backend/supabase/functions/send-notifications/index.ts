@@ -26,16 +26,15 @@ function formatAmount(amount: number, currency: string): string {
   return `${amount.toLocaleString("ru-RU")} ${symbols[currency] || currency}`;
 }
 
-// Форматирование даты
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-  });
+// Получить emoji из иконки подписки
+function getEmoji(icon: string | null): string {
+  if (!icon) return "📦";
+  if (icon.startsWith("symbol:")) return "📦";
+  return icon;
 }
 
 // Отправка сообщения через Telegram Bot API
-async function sendTelegramMessage(chatId: number, text: string, parseMode: string = "HTML"): Promise<boolean> {
+async function sendTelegramMessage(chatId: number, text: string): Promise<boolean> {
   try {
     const response = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -45,7 +44,7 @@ async function sendTelegramMessage(chatId: number, text: string, parseMode: stri
         body: JSON.stringify({
           chat_id: chatId,
           text,
-          parse_mode: parseMode,
+          parse_mode: "HTML",
           disable_web_page_preview: true,
         }),
       }
@@ -62,14 +61,13 @@ async function sendTelegramMessage(chatId: number, text: string, parseMode: stri
 // Создание текста уведомления
 function createNotificationText(subscriptions: any[], daysUntil: number): string {
   const totalAmount = subscriptions.reduce((sum, sub) => {
-    // Конвертация в рубли для общей суммы
     const rates: Record<string, number> = { RUB: 1, USD: 96, EUR: 104 };
     return sum + sub.amount * (rates[sub.currency] || 1);
   }, 0);
 
   let emoji = "🔔";
   let urgencyText = "";
-  
+
   if (daysUntil === 0) {
     emoji = "⚠️";
     urgencyText = "<b>Сегодня</b>";
@@ -83,11 +81,12 @@ function createNotificationText(subscriptions: any[], daysUntil: number): string
   let text = `${emoji} ${urgencyText} списание:\n\n`;
 
   for (const sub of subscriptions) {
-    text += `• <b>${sub.name}</b> — ${formatAmount(sub.amount, sub.currency)}\n`;
+    const subEmoji = getEmoji(sub.icon);
+    text += `• ${subEmoji} <b>${sub.subscription_name || sub.name}</b> — ${formatAmount(sub.amount, sub.currency)}\n`;
   }
 
   text += `\n💰 Всего: <b>${formatAmount(Math.round(totalAmount), "RUB")}</b>`;
-  
+
   if (daysUntil <= 1) {
     text += `\n\n💡 Убедитесь, что на карте достаточно средств`;
   }
@@ -112,8 +111,35 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Отправляем уведомления за 3 дня, за 1 день и в день списания
-    const notificationDays = [3, 1, 0];
+    // Получаем всех пользователей с включёнными уведомлениями
+    const { data: users, error: usersError } = await supabase
+      .from("users")
+      .select("id, first_reminder_days, second_reminder_days")
+      .eq("notifications_enabled", true);
+
+    if (usersError) {
+      console.error("Error fetching users:", usersError);
+      throw usersError;
+    }
+
+    // Собираем уникальные days_ahead и маппинг user → настроенные дни
+    const daysSet = new Set<number>();
+    const userReminderMap: Record<string, Set<number>> = {};
+
+    for (const u of (users || [])) {
+      const userDays = new Set<number>();
+      if (u.first_reminder_days >= 0) {
+        daysSet.add(u.first_reminder_days);
+        userDays.add(u.first_reminder_days);
+      }
+      if (u.second_reminder_days >= 0) {
+        daysSet.add(u.second_reminder_days);
+        userDays.add(u.second_reminder_days);
+      }
+      userReminderMap[u.id] = userDays;
+    }
+
+    const notificationDays = Array.from(daysSet).sort((a, b) => b - a);
     let totalSent = 0;
     let totalFailed = 0;
 
@@ -130,13 +156,15 @@ serve(async (req: Request) => {
       }
 
       if (!subscriptions || subscriptions.length === 0) {
-        console.log(`No subscriptions for ${daysAhead} days ahead`);
         continue;
       }
 
-      // Группируем подписки по пользователям
+      // Группируем по пользователям (только тем, у кого настроен этот days_ahead)
       const userSubscriptions: Record<number, any[]> = {};
       for (const sub of subscriptions) {
+        const userDays = userReminderMap[sub.user_id];
+        if (!userDays || !userDays.has(daysAhead)) continue;
+
         if (!userSubscriptions[sub.telegram_id]) {
           userSubscriptions[sub.telegram_id] = [];
         }
@@ -150,7 +178,7 @@ serve(async (req: Request) => {
 
         if (success) {
           totalSent++;
-          
+
           // Записываем в историю уведомлений
           for (const sub of subs) {
             await supabase.from("notifications").insert({
@@ -167,7 +195,7 @@ serve(async (req: Request) => {
           totalFailed++;
         }
 
-        // Rate limiting - не более 30 сообщений в секунду
+        // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 50));
       }
     }
@@ -177,6 +205,7 @@ serve(async (req: Request) => {
         success: true,
         sent: totalSent,
         failed: totalFailed,
+        days_checked: notificationDays,
         timestamp: new Date().toISOString(),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

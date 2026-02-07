@@ -14,6 +14,8 @@ const ENDPOINTS = {
   saveSubscription: `${API_BASE}/save-subscription`,
   deleteSubscription: `${API_BASE}/delete-subscription`,
   getTemplates: `${API_BASE}/get-templates`,
+  saveNotificationSettings: `${API_BASE}/save-notification-settings`,
+  sendTestNotification: `${API_BASE}/send-test-notification`,
 };
 
 // ============================================
@@ -284,6 +286,26 @@ const api = {
       headers: apiHeaders,
     });
     if (!response.ok) throw new Error('Failed to fetch templates');
+    return response.json();
+  },
+
+  async saveNotificationSettings(userId, settings) {
+    const response = await fetch(ENDPOINTS.saveNotificationSettings, {
+      method: 'POST',
+      headers: apiHeaders,
+      body: JSON.stringify({ userId, settings }),
+    });
+    if (!response.ok) throw new Error('Failed to save notification settings');
+    return response.json();
+  },
+
+  async sendTestNotification(userId) {
+    const response = await fetch(ENDPOINTS.sendTestNotification, {
+      method: 'POST',
+      headers: apiHeaders,
+      body: JSON.stringify({ userId }),
+    });
+    if (!response.ok) throw new Error('Failed to send test notification');
     return response.json();
   },
 };
@@ -988,7 +1010,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
                   </div>
                   <div>
                     <span className="settings-row-label">Уведомления</span>
-                    <p className="settings-row-hint">Приходят через Telegram‑бот. Не блокируйте ему уведомления</p>
+                    <p className="settings-row-hint">Настроить можно в настройках</p>
                   </div>
                 </div>
                 <label className="toggle" onClick={e => e.stopPropagation()}>
@@ -1516,7 +1538,7 @@ const CategoriesSheet = ({ visible, categories, customCategories, onAddCategory,
 // ============================================
 // КОМПОНЕНТ: ЭКРАН НАСТРОЕК
 // ============================================
-const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, customCategories, onAddCategory, onDeleteCategory, theme, onToggleTheme, onClose }) => {
+const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, customCategories, onAddCategory, onDeleteCategory, theme, onToggleTheme, onClose, onSendTestNotification }) => {
   const tg = getTelegram();
   const telegramUser = tg?.initDataUnsafe?.user;
   const [isClosing, setIsClosing] = useState(false);
@@ -1650,14 +1672,15 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
           {/* Test Notification */}
           <div className="settings-row">
             <button className="test-notification-btn" onClick={() => {
-              window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
-              window.Telegram?.WebApp?.showAlert?.('Тестовое уведомление отправлено!');
+              if (onSendTestNotification) {
+                onSendTestNotification();
+              }
             }}>
               Тест уведомлений
             </button>
           </div>
         </div>
-        <p className="settings-hint">Если включен режим фокуса, уведомления могут не приходить.</p>
+        <p className="settings-hint">Уведомления приходят через Telegram‑бот. Убедитесь, что бот не заблокирован и уведомления от него включены.</p>
 
         {/* Theme */}
         <div className="settings-section-label">ОФОРМЛЕНИЕ</div>
@@ -1977,9 +2000,13 @@ export default function SubfyApp() {
     return groups;
   }, [subscriptions, allCategories, appSettings]);
 
-  // Сохранение настроек
+  // Сохранение настроек (localStorage + синхронизация в БД)
   useEffect(() => {
     localStorage.setItem('subfy_settings', JSON.stringify(appSettings));
+    // Синхронизируем в БД (fire-and-forget)
+    if (user?.id && !isDevMode && SUPABASE_URL) {
+      api.saveNotificationSettings(user.id, appSettings).catch(() => {});
+    }
   }, [appSettings]);
 
   // Сохранение темы
@@ -2127,6 +2154,21 @@ export default function SubfyApp() {
     }
   };
 
+  const sendTestNotification = async () => {
+    if (!user?.id || isDevMode) {
+      showToast('Недоступно в режиме разработки', 'error');
+      return;
+    }
+    try {
+      await api.sendTestNotification(user.id);
+      hapticNotificationSuccess();
+      showToast('Тестовое уведомление отправлено!');
+    } catch (err) {
+      console.error('Test notification error:', err);
+      showToast('Не удалось отправить уведомление', 'error');
+    }
+  };
+
   const handleOnboardingComplete = () => {
     localStorage.setItem('subfy_onboarding_complete', 'true');
     setAppState('main');
@@ -2209,6 +2251,7 @@ export default function SubfyApp() {
             theme={theme}
             onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             onClose={() => setShowSettings(false)}
+            onSendTestNotification={sendTestNotification}
           />
         </div>
       )}
