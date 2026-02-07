@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Plus, X, Calendar, ChevronRight, ChevronLeft, Sun, Moon, Search, Check, Trash2, Edit3, Bell, CreditCard, Loader, Settings, TrendingUp, PieChart, ArrowLeft, BellOff, Clock, ExternalLink, Camera } from 'lucide-react';
+import { Plus, X, Calendar, ChevronRight, ChevronLeft, Sun, Moon, Search, Check, Trash2, Edit3, Bell, CreditCard, Loader, Settings, TrendingUp, PieChart, ArrowLeft, BellOff, Clock, ExternalLink, Camera, Landmark, ShoppingCart, ShoppingBag, Tv, Music, Gamepad2, Cloud, Phone, Wifi, Zap, Droplet, Home, Car, Plane, Heart, Pill, GraduationCap, Briefcase, Lock, Key, Keyboard, Globe, Star, CircleDot, Monitor, Headphones, BookOpen } from 'lucide-react';
 
 // ============================================
 // КОНФИГУРАЦИЯ
@@ -96,7 +96,36 @@ const COLOR_PALETTE = [
   '#F59E0B', '#FB923C', '#A78BFA', '#67E8F9',
 ];
 
-const EMOJI_OPTIONS = ['📦', '🎮', '💼', '🏋️', '🎨', '📱', '🖥️', '🎧', '📚', '🎬', '🎵', '☁️', '🔒', '💳', '🛒', '✈️'];
+const EMOJI_OPTIONS = ['📦', '🎮', '💼', '🏋️', '🎨', '📱', '🖥️', '🎧', '📚', '🎬', '🎵', '☁️', '🔒', '💳', '🛒', '✈️',
+  '🏠', '🚗', '✈️', '🍔', '☕', '🍕', '🎯', '💡', '🔑', '⭐', '🎓', '💊', '🏀', '🎸', '📷'];
+
+const SYMBOL_OPTIONS = [
+  { name: 'credit-card', icon: CreditCard },
+  { name: 'sport', icon: CircleDot },
+  { name: 'bank', icon: Landmark },
+  { name: 'shopping-cart', icon: ShoppingCart },
+  { name: 'bag', icon: ShoppingBag },
+  { name: 'tv', icon: Tv },
+  { name: 'music', icon: Music },
+  { name: 'gamepad', icon: Gamepad2 },
+  { name: 'cloud', icon: Cloud },
+  { name: 'phone', icon: Phone },
+  { name: 'wifi', icon: Wifi },
+  { name: 'lightning', icon: Zap },
+  { name: 'droplet', icon: Droplet },
+  { name: 'house', icon: Home },
+  { name: 'car', icon: Car },
+  { name: 'plane', icon: Plane },
+  { name: 'heart', icon: Heart },
+  { name: 'pill', icon: Pill },
+  { name: 'graduation', icon: GraduationCap },
+  { name: 'briefcase', icon: Briefcase },
+  { name: 'lock', icon: Lock },
+  { name: 'key', icon: Key },
+  { name: 'keyboard', icon: Keyboard },
+  { name: 'globe', icon: Globe },
+  { name: 'star', icon: Star },
+];
 
 // ============================================
 // УТИЛИТЫ
@@ -394,12 +423,31 @@ const Logo = ({ domain, emoji, color, size = 32, logoUrl }) => {
   const imageUrl = logoUrl || (domain ? `https://logo.clearbit.com/${domain}` : null);
 
   if (!imageUrl || hasError) {
+    // Check if emoji is a symbol reference (e.g. "symbol:credit-card")
+    const isSymbol = emoji && typeof emoji === 'string' && emoji.startsWith('symbol:');
+    if (isSymbol) {
+      const symbolName = emoji.replace('symbol:', '');
+      const sym = SYMBOL_OPTIONS.find(s => s.name === symbolName);
+      if (sym) {
+        const SymIcon = sym.icon;
+        return (
+          <div className="logo-emoji" style={{
+            width: size, height: size,
+            background: color,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: size > 60 ? 20 : 8, flexShrink: 0,
+          }}>
+            <SymIcon size={size * 0.5} color="white" strokeWidth={2} />
+          </div>
+        );
+      }
+    }
     return (
-      <div className="logo-emoji" style={{ 
-        width: size, height: size, 
+      <div className="logo-emoji" style={{
+        width: size, height: size,
         background: color + '20', color: color,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: 8, fontSize: size * 0.5, flexShrink: 0,
+        borderRadius: size > 60 ? 20 : 8, fontSize: size * 0.5, flexShrink: 0,
       }}>
         {emoji || '📦'}
       </div>
@@ -407,10 +455,10 @@ const Logo = ({ domain, emoji, color, size = 32, logoUrl }) => {
   }
   
   return (
-    <div className="logo-container" style={{ 
-      width: size, height: size, 
+    <div className="logo-container" style={{
+      width: size, height: size,
       background: loaded ? 'white' : color + '20',
-      borderRadius: 8, overflow: 'hidden',
+      borderRadius: size > 60 ? 20 : 8, overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     }}>
       <img
@@ -678,12 +726,15 @@ const AmountModal = ({ visible, amount, currency, currencies, onAmountChange, on
 // ============================================
 // КОМПОНЕНТ: ФОРМА ПОДПИСКИ
 // ============================================
-const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, defaultNotificationSettings, customCategories = [], onAddCategory }) => {
+const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, defaultNotificationSettings, customCategories = [], onAddCategory, categories = CATEGORIES }) => {
   const [step, setStep] = useState(editData ? 2 : 1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Все');
   const [isClosing, setIsClosing] = useState(false);
-  const [showLogoPicker, setShowLogoPicker] = useState(false);
+  const [showLogoSheet, setShowLogoSheet] = useState(false);
+  const [logoSheetClosing, setLogoSheetClosing] = useState(false);
+  const [logoSheetTab, setLogoSheetTab] = useState('emoji');
+  const [logoScaledUp, setLogoScaledUp] = useState(false);
   const [showAmountModal, setShowAmountModal] = useState(false);
   const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -692,6 +743,16 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
     if (tg) tg.expand();
+
+    const handleResize = () => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        setTimeout(() => {
+          document.activeElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    };
+    window.visualViewport?.addEventListener('resize', handleResize);
+    return () => window.visualViewport?.removeEventListener('resize', handleResize);
   }, []);
 
   const handleClose = () => {
@@ -700,7 +761,8 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   };
 
   // Combine default and custom categories
-  const allCategories = [...CATEGORIES.filter(c => c.id !== 'other'), ...customCategories, CATEGORIES.find(c => c.id === 'other')];
+  const otherCat = categories.find(c => c.id === 'other');
+  const allCategories = [...categories.filter(c => c.id !== 'other'), ...customCategories, ...(otherCat ? [otherCat] : [])];
   
   const [formData, setFormData] = useState(editData ? {
     ...editData,
@@ -723,7 +785,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     notifyEnabled: true,
   });
 
-  const categories = ['Все', ...CATEGORIES.map(c => c.name)];
+  const categoryTabs = ['Все', ...CATEGORIES.map(c => c.name)];
 
   const filteredTemplates = templates.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -735,8 +797,6 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     setFormData({
       ...formData,
       name: template.name,
-      amount: template.price,
-      currency: template.currency || 'RUB',
       color: template.color,
       icon: template.icon || '📦',
       domain: template.domain,
@@ -786,7 +846,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               </div>
 
               <div className="category-tabs">
-                {categories.map(cat => (
+                {categoryTabs.map(cat => (
                   <button
                     key={cat}
                     className={`cat-tab ${selectedCategory === cat ? 'active' : ''}`}
@@ -824,40 +884,16 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
         ) : (
           <div className="subscription-form card-form">
             {/* Centered Logo */}
-            <div className="card-form-logo" onClick={() => setShowLogoPicker(!showLogoPicker)}>
-              <Logo domain={formData.domain} emoji={formData.icon} color={formData.color} size={72} logoUrl={formData.logo_url} />
-              <div className="logo-edit-badge"><Edit3 size={12} /></div>
+            <div
+              className={`card-form-logo ${logoScaledUp ? 'scaled-up' : ''}`}
+              onClick={() => {
+                setLogoScaledUp(true);
+                setTimeout(() => setShowLogoSheet(true), 150);
+              }}
+            >
+              <Logo domain={formData.domain} emoji={formData.icon} color={formData.color} size={96} logoUrl={formData.logo_url} />
+              <div className="logo-edit-badge"><Edit3 size={14} /></div>
             </div>
-
-            {showLogoPicker && (
-              <div className="settings-card" style={{ padding: 16 }}>
-                <div className="form-section">
-                  <label>Иконка</label>
-                  <div className="emoji-selector">
-                    {EMOJI_OPTIONS.map(emoji => (
-                      <button
-                        key={emoji}
-                        className={`emoji-btn ${formData.icon === emoji ? 'active' : ''}`}
-                        onClick={() => setFormData({ ...formData, icon: emoji })}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="form-section">
-                  <label>Цвет</label>
-                  <div className="color-picker">
-                    <input
-                      type="color"
-                      value={formData.color}
-                      onChange={e => setFormData({ ...formData, color: e.target.value })}
-                    />
-                    <span>{formData.color}</span>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Card 1: Name, Period, Date */}
             <div className="settings-card">
@@ -942,49 +978,46 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               </div>
 
               {showCategoryPicker && (
-                <div className="settings-card-expand">
-                  <div className="category-selector">
-                    {allCategories.map(cat => (
-                      <button
-                        key={cat.id}
-                        className={`category-btn ${formData.category === cat.name ? 'active' : ''}`}
-                        style={{ '--cat-color': cat.color }}
-                        onClick={() => {
-                          setFormData({ ...formData, category: cat.name });
-                          setShowCategoryPicker(false);
-                        }}
-                      >
-                        {cat.name}
-                      </button>
-                    ))}
-                  </div>
+                <div className="period-dropdown-inline">
+                  {allCategories.map(cat => (
+                    <button
+                      key={cat.id}
+                      className={`period-dropdown-item ${formData.category === cat.name ? 'active' : ''}`}
+                      onClick={() => {
+                        setFormData({ ...formData, category: cat.name });
+                        setShowCategoryPicker(false);
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div className="category-color-dot-small" style={{ background: cat.color }} />
+                        <span>{cat.name}</span>
+                      </div>
+                      {formData.category === cat.name && <Check size={16} />}
+                    </button>
+                  ))}
                 </div>
               )}
 
               <div className="settings-row-divider" />
 
-              <div className="settings-row" onClick={() => setFormData({ ...formData, notifyEnabled: !formData.notifyEnabled })}>
+              <div className="settings-row">
                 <div className="settings-row-left">
                   <div className="settings-row-icon" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }}>
                     <Bell size={16} />
                   </div>
-                  <span className="settings-row-label">Уведомления</span>
+                  <div>
+                    <span className="settings-row-label">Уведомления</span>
+                    <p className="settings-row-hint">Настроить можно в настройках</p>
+                  </div>
                 </div>
-                <div className="settings-row-value">
-                  <span>{formData.notifyEnabled ? 'По умолчанию' : 'Выключено'}</span>
-                  <ChevronRight size={16} className="settings-row-chevron" />
-                </div>
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div className="settings-card">
-              <div className="settings-row">
-                <textarea
-                  className="settings-notes-input"
-                  placeholder="Заметки"
-                  rows={2}
-                />
+                <label className="toggle" onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={formData.notifyEnabled}
+                    onChange={() => setFormData({ ...formData, notifyEnabled: !formData.notifyEnabled })}
+                  />
+                  <span className="toggle-slider" />
+                </label>
               </div>
             </div>
 
@@ -1006,6 +1039,77 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
         onCurrencyChange={(code) => setFormData({ ...formData, currency: code })}
         onClose={() => setShowAmountModal(false)}
       />
+
+      {/* Logo Editor Bottom Sheet */}
+      {showLogoSheet && (
+        <div className="logo-sheet-overlay" onClick={() => {
+          setLogoSheetClosing(true);
+          setLogoScaledUp(false);
+          setTimeout(() => { setShowLogoSheet(false); setLogoSheetClosing(false); }, 280);
+        }}>
+          <div className={`logo-sheet ${logoSheetClosing ? 'closing' : ''}`} onClick={e => e.stopPropagation()}>
+            <div className="logo-sheet-handle" />
+
+            {/* Preview */}
+            <div className="logo-sheet-preview">
+              <Logo domain={null} emoji={formData.icon} color={formData.color} size={80} logoUrl={null} />
+            </div>
+
+            {/* Color Palette Row */}
+            <div className="logo-sheet-colors">
+              {COLOR_PALETTE.slice(0, 7).map(color => (
+                <button
+                  key={color}
+                  className={`logo-color-btn ${formData.color === color ? 'active' : ''}`}
+                  style={{ background: color }}
+                  onClick={() => setFormData({ ...formData, color, domain: null, logo_url: null })}
+                />
+              ))}
+            </div>
+
+            {/* Tabs */}
+            <div className="logo-sheet-tabs">
+              <button
+                className={`logo-sheet-tab ${logoSheetTab === 'emoji' ? 'active' : ''}`}
+                onClick={() => setLogoSheetTab('emoji')}
+              >
+                Эмодзи
+              </button>
+              <button
+                className={`logo-sheet-tab ${logoSheetTab === 'symbols' ? 'active' : ''}`}
+                onClick={() => setLogoSheetTab('symbols')}
+              >
+                Символы
+              </button>
+            </div>
+
+            {/* Grid */}
+            <div className="logo-sheet-grid">
+              {logoSheetTab === 'emoji' ? (
+                EMOJI_OPTIONS.map((em, i) => (
+                  <button
+                    key={em + i}
+                    className={`logo-grid-item ${formData.icon === em ? 'active' : ''}`}
+                    onClick={() => setFormData({ ...formData, icon: em, domain: null, logo_url: null })}
+                  >
+                    <span className="logo-grid-emoji">{em}</span>
+                  </button>
+                ))
+              ) : (
+                SYMBOL_OPTIONS.map(sym => (
+                  <button
+                    key={sym.name}
+                    className={`logo-grid-item ${formData.icon === 'symbol:' + sym.name ? 'active' : ''}`}
+                    onClick={() => setFormData({ ...formData, icon: 'symbol:' + sym.name, domain: null, logo_url: null })}
+                  >
+                    <sym.icon size={24} color="var(--text-primary)" strokeWidth={1.5} />
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1211,9 +1315,11 @@ const CategoriesSheet = ({ visible, categories, customCategories, onAddCategory,
   const [selectedColor, setSelectedColor] = useState(COLOR_PALETTE[0]);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [swipeStates, setSwipeStates] = useState({});
+  const [deletingCat, setDeletingCat] = useState(null);
 
   useEffect(() => {
-    if (visible) setIsClosing(false);
+    if (visible) { setIsClosing(false); setSwipeStates({}); }
   }, [visible]);
 
   if (!visible) return null;
@@ -1233,6 +1339,44 @@ const CategoriesSheet = ({ visible, categories, customCategories, onAddCategory,
     }
   };
 
+  const handleCatTouchStart = (catId, e) => {
+    setSwipeStates(prev => ({
+      ...prev,
+      [catId]: { ...prev[catId], startX: e.touches[0].clientX, swiping: true }
+    }));
+  };
+
+  const handleCatTouchMove = (catId, e) => {
+    const state = swipeStates[catId];
+    if (!state?.swiping) return;
+    const diff = state.startX - e.touches[0].clientX;
+    setSwipeStates(prev => ({
+      ...prev,
+      [catId]: { ...prev[catId], x: Math.max(0, Math.min(80, diff)) }
+    }));
+  };
+
+  const handleCatTouchEnd = (catId) => {
+    const state = swipeStates[catId];
+    if (!state) return;
+    setSwipeStates(prev => ({
+      ...prev,
+      [catId]: { ...prev[catId], swiping: false, x: state.x > 40 ? 80 : 0 }
+    }));
+  };
+
+  const confirmCatDelete = () => {
+    if (deletingCat) {
+      onDeleteCategory(deletingCat.id);
+      setSwipeStates(prev => {
+        const next = { ...prev };
+        delete next[deletingCat.id];
+        return next;
+      });
+      setDeletingCat(null);
+    }
+  };
+
   return (
     <div className="categories-sheet-overlay" onClick={handleClose}>
       <div className={`categories-sheet ${isClosing ? 'closing' : ''}`} onClick={e => e.stopPropagation()}>
@@ -1245,18 +1389,38 @@ const CategoriesSheet = ({ visible, categories, customCategories, onAddCategory,
 
         <div className="categories-list-wrapper">
           <div className="settings-card">
-            {allCats.map((cat, i) => (
-              <React.Fragment key={cat.id}>
-                <div className="category-list-item">
-                  <span className="category-list-name">{cat.name}</span>
-                  <div className="category-color-dot" style={{ background: cat.color }} />
-                </div>
-                {i < allCats.length - 1 && <div className="settings-row-divider" />}
-              </React.Fragment>
-            ))}
+            {allCats.map((cat, i) => {
+              const swipe = swipeStates[cat.id] || { x: 0, swiping: false };
+              return (
+                <React.Fragment key={cat.id}>
+                  <div className="cat-swipe-wrapper">
+                    <div className="cat-swipe-bg" style={{ opacity: swipe.x / 80 }}>
+                      <button className="swipe-delete-btn" onClick={() => setDeletingCat(cat)}>
+                        <Trash2 size={18} />
+                        <span>Удалить</span>
+                      </button>
+                    </div>
+                    <div
+                      className="category-list-item"
+                      style={{
+                        transform: `translateX(-${swipe.x}px)`,
+                        transition: swipe.swiping ? 'none' : 'transform 0.2s ease'
+                      }}
+                      onTouchStart={e => handleCatTouchStart(cat.id, e)}
+                      onTouchMove={e => handleCatTouchMove(cat.id, e)}
+                      onTouchEnd={() => handleCatTouchEnd(cat.id)}
+                    >
+                      <span className="category-list-name">{cat.name}</span>
+                      <div className="category-color-dot" style={{ background: cat.color }} />
+                    </div>
+                  </div>
+                  {i < allCats.length - 1 && <div className="settings-row-divider" />}
+                </React.Fragment>
+              );
+            })}
           </div>
 
-          <p className="categories-hint">Категория «Другое» не может быть удалена, так как является категорией по умолчанию для подписок без категории.</p>
+          <p className="categories-hint">Свайпните влево, чтобы удалить категорию. Подписки из удалённой категории перейдут в «Другое».</p>
 
           <div className="new-category-row">
             <div
@@ -1298,6 +1462,14 @@ const CategoriesSheet = ({ visible, categories, customCategories, onAddCategory,
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        visible={!!deletingCat}
+        title="Удалить категорию?"
+        message={deletingCat ? `Категория «${deletingCat.name}» будет удалена. Подписки с этой категорией станут «Другое».` : ''}
+        onConfirm={confirmCatDelete}
+        onCancel={() => setDeletingCat(null)}
+      />
     </div>
   );
 };
@@ -1697,6 +1869,11 @@ export default function SubfyApp() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [deletedDefaultCategories, setDeletedDefaultCategories] = useState(() => {
+    const saved = localStorage.getItem('subfy_deleted_default_categories');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Add a new custom category with chosen color
   const addCustomCategory = (name, color = '#EF4444') => {
     const newCategory = {
@@ -1712,20 +1889,42 @@ export default function SubfyApp() {
     });
   };
 
-  // Delete a custom category
-  const deleteCustomCategory = (catId) => {
-    setCustomCategories(prev => {
-      const updated = prev.filter(c => c.id !== catId);
-      localStorage.setItem('subfy_custom_categories', JSON.stringify(updated));
-      return updated;
-    });
+  // Delete any category (custom or default)
+  const deleteCategory = (catId) => {
+    const isCustom = customCategories.some(c => c.id === catId);
+    const allCats = [...CATEGORIES, ...customCategories];
+    const deletedCat = allCats.find(c => c.id === catId);
+
+    if (isCustom) {
+      setCustomCategories(prev => {
+        const updated = prev.filter(c => c.id !== catId);
+        localStorage.setItem('subfy_custom_categories', JSON.stringify(updated));
+        return updated;
+      });
+    } else {
+      setDeletedDefaultCategories(prev => {
+        const updated = [...prev, catId];
+        localStorage.setItem('subfy_deleted_default_categories', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    // Reassign affected subscriptions to "Другое"
+    if (deletedCat && deletedCat.name !== 'Другое') {
+      setSubscriptions(prev => prev.map(sub =>
+        sub.category === deletedCat.name ? { ...sub, category: 'Другое' } : sub
+      ));
+    }
   };
 
   const effectiveTemplates = useMemo(() => {
     return dbTemplates.length > 0 ? dbTemplates.map(normalizeTemplate) : SUBSCRIPTION_TEMPLATES;
   }, [dbTemplates]);
 
-  const allCategories = useMemo(() => [...CATEGORIES, ...customCategories], [customCategories]);
+  const allCategories = useMemo(() => [
+    ...CATEGORIES.filter(c => !deletedDefaultCategories.includes(c.id)),
+    ...customCategories
+  ], [customCategories, deletedDefaultCategories]);
 
   const groupedSubscriptions = useMemo(() => {
     const order = appSettings.categoryOrder || allCategories.map(c => c.id);
@@ -1985,7 +2184,7 @@ export default function SubfyApp() {
           categories={allCategories}
           customCategories={customCategories}
           onAddCategory={addCustomCategory}
-          onDeleteCategory={deleteCustomCategory}
+          onDeleteCategory={deleteCategory}
           theme={theme}
           onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           onClose={() => setShowSettings(false)}
@@ -2142,6 +2341,7 @@ export default function SubfyApp() {
           defaultNotificationSettings={defaultNotificationSettings}
           customCategories={customCategories}
           onAddCategory={addCustomCategory}
+          categories={allCategories}
         />
       )}
 
@@ -2774,8 +2974,6 @@ const styles = `
     flex-direction: column;
     overflow-x: hidden;
     height: 100vh;
-    height: 100dvh;
-    min-height: -webkit-fill-available;
   }
 
   @keyframes slideUp {
@@ -3140,26 +3338,19 @@ const styles = `
 
   .other-period-link.selected { color: var(--success); }
 
-  .category-selector {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+  .category-color-dot-small {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
-  .category-btn {
-    padding: 8px 14px;
-    border: 2px solid var(--border);
-    background: var(--bg-secondary);
-    border-radius: 20px;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    cursor: pointer;
-  }
-
-  .category-btn.active {
-    border-color: var(--cat-color, var(--accent));
-    background: color-mix(in srgb, var(--cat-color, var(--accent)) 15%, transparent);
+  .settings-row-hint {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+    margin: 2px 0 0;
+    font-weight: 400;
+    line-height: 1.3;
   }
 
   .custom-category-input {
@@ -3283,31 +3474,6 @@ const styles = `
     color: var(--text-secondary);
   }
 
-  .emoji-selector { display: flex; flex-wrap: wrap; gap: 6px; }
-
-  .emoji-btn {
-    width: 40px;
-    height: 40px;
-    border: 2px solid var(--border);
-    background: var(--bg-secondary);
-    border-radius: 10px;
-    font-size: 1.125rem;
-    cursor: pointer;
-  }
-
-  .emoji-btn.active { border-color: var(--accent); background: rgba(99, 102, 241, 0.1); }
-
-  .color-picker { display: flex; align-items: center; gap: 12px; }
-
-  .color-picker input[type="color"] {
-    width: 48px;
-    height: 48px;
-    padding: 4px;
-    border-radius: 10px;
-    cursor: pointer;
-  }
-
-  .color-picker span { font-family: monospace; color: var(--text-secondary); font-size: 0.875rem; }
 
   .form-logo-btn {
     position: relative;
@@ -3396,14 +3562,19 @@ const styles = `
     position: relative;
     cursor: pointer;
     margin: 8px 0 4px;
+    transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .card-form-logo.scaled-up {
+    transform: scale(1.15);
   }
 
   .card-form-logo .logo-edit-badge {
     position: absolute;
-    bottom: -2px;
-    right: -2px;
-    width: 22px;
-    height: 22px;
+    bottom: 0;
+    right: 0;
+    width: 26px;
+    height: 26px;
     background: var(--accent);
     border-radius: 50%;
     display: flex;
@@ -3411,6 +3582,140 @@ const styles = `
     justify-content: center;
     color: white;
     border: 2px solid var(--bg-primary);
+  }
+
+  /* Logo Editor Bottom Sheet */
+  .logo-sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 1200;
+    animation: fadeOverlayIn 0.2s ease;
+  }
+
+  @keyframes fadeOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .logo-sheet {
+    width: 100%;
+    background: var(--bg-primary);
+    border-radius: 20px 20px 0 0;
+    padding: 12px 20px calc(20px + var(--tg-safe-area-bottom, 0px));
+    animation: amountSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    max-height: 65vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .logo-sheet.closing {
+    animation: amountSlideDown 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+
+  .logo-sheet-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+
+  .logo-sheet-preview {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  .logo-sheet-colors {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .logo-color-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+
+  .logo-color-btn.active {
+    border-color: white;
+    transform: scale(1.15);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+  }
+
+  .logo-color-btn:active {
+    transform: scale(0.9);
+  }
+
+  .logo-sheet-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    padding: 3px;
+    margin-bottom: 16px;
+  }
+
+  .logo-sheet-tab {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .logo-sheet-tab.active {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+
+  .logo-sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1;
+    padding-bottom: 8px;
+  }
+
+  .logo-grid-item {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--border);
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .logo-grid-item.active {
+    border-color: var(--accent);
+    background: rgba(99, 102, 241, 0.15);
+  }
+
+  .logo-grid-item:active {
+    transform: scale(0.93);
+  }
+
+  .logo-grid-emoji {
+    font-size: 1.5rem;
   }
 
   .settings-card {
@@ -3522,21 +3827,6 @@ const styles = `
     padding: 8px 16px 16px;
   }
 
-  .settings-notes-input {
-    width: 100%;
-    border: none;
-    background: transparent;
-    padding: 0;
-    font-size: 0.9375rem;
-    color: var(--text-primary);
-    outline: none;
-    font-family: inherit;
-    resize: none;
-  }
-
-  .settings-notes-input::placeholder {
-    color: var(--text-secondary);
-  }
 
   .notification-expanded {
     padding: 16px;
@@ -3545,6 +3835,13 @@ const styles = `
   /* Period Dropdown (inline in card) */
   .period-dropdown-inline {
     padding: 4px 8px 8px;
+    animation: dropdownExpand 0.2s ease;
+    overflow: hidden;
+  }
+
+  @keyframes dropdownExpand {
+    from { opacity: 0; max-height: 0; }
+    to { opacity: 1; max-height: 500px; }
   }
 
   .period-dropdown-item {
@@ -3843,12 +4140,31 @@ const styles = `
     overflow-y: auto;
   }
 
+  .cat-swipe-wrapper {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cat-swipe-bg {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 80px;
+    background: #EF4444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .category-list-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 16px;
     min-height: 48px;
+    background: var(--bg-secondary);
+    position: relative;
   }
 
   .category-list-name {
