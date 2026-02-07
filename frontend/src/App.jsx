@@ -616,7 +616,7 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
               <button className="sub-edit-btn" onClick={(e) => { e.stopPropagation(); onEdit(subscription); }}>
                 <Edit3 size={16} />
               </button>
-              <div className={`sub-next ${daysUntil !== null && daysUntil <= 3 ? 'soon' : ''}`}>
+              <div className={`sub-next ${daysUntil !== null && daysUntil <= 0 ? 'soon' : daysUntil !== null && daysUntil <= 2 ? 'warning' : ''}`}>
                 <span>{formatDaysUntil(daysUntil)}</span>
               </div>
             </div>
@@ -791,7 +791,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   
   const [formData, setFormData] = useState(editData ? {
     ...editData,
-    firstBillingDate: (editData.first_billing_date || editData.firstBillingDate || '').split('T')[0],
+    firstBillingDate: (editData.next_billing_date || editData.first_billing_date || editData.firstBillingDate || '').split('T')[0],
     billingCycle: editData.billing_cycle || editData.billingCycle || 'monthly',
     category: editData.category || 'Другое',
     notifyEnabled: editData.notify_enabled ?? true,
@@ -2939,6 +2939,7 @@ const styles = `
     flex-shrink: 0;
   }
 
+  .sub-next.warning { background: rgba(245, 158, 11, 0.12); color: #F59E0B; }
   .sub-next.soon { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
 
   /* Confirm Modal */
@@ -3935,14 +3936,17 @@ const styles = `
   .settings-date-input {
     border: none;
     background: transparent;
-    padding: 0;
+    padding: 4px 0;
     font-size: 0.9375rem;
     color: var(--text-secondary);
     outline: none;
     text-align: right;
-    -webkit-appearance: none;
-    appearance: none;
     font-family: inherit;
+    cursor: pointer;
+    min-width: 130px;
+  }
+  .settings-date-input::-webkit-calendar-picker-indicator {
+    filter: var(--calendar-icon-filter, none);
     cursor: pointer;
   }
 
