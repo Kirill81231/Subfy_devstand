@@ -94,13 +94,24 @@ function createNotificationText(subscriptions: any[], daysUntil: number): string
   return text;
 }
 
-// Получить текущий час в Москве (UTC+3)
-function getMoscowHour(): number {
-  const now = new Date();
-  const moscowOffset = 3 * 60; // UTC+3 in minutes
-  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const moscowMinutes = utcMinutes + moscowOffset;
-  return Math.floor(((moscowMinutes % 1440) + 1440) % 1440 / 60);
+// Получить текущий час в таймзоне пользователя
+function getCurrentHourInTimezone(timezone: string): number {
+  try {
+    const now = new Date();
+    const hourStr = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: timezone,
+    }).format(now);
+    return parseInt(hourStr, 10) % 24; // "24" → 0
+  } catch {
+    // Если таймзона невалидна — фолбэк на Europe/Moscow
+    const now = new Date();
+    const moscowOffset = 3 * 60;
+    const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const moscowMinutes = utcMinutes + moscowOffset;
+    return Math.floor(((moscowMinutes % 1440) + 1440) % 1440 / 60);
+  }
 }
 
 serve(async (req: Request) => {
@@ -119,13 +130,11 @@ serve(async (req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const currentMoscowHour = getMoscowHour();
 
     // Получаем пользователей с включёнными уведомлениями
-    // Фильтруем по часу: первый или второй reminder time должен совпадать с текущим часом
     const { data: users, error: usersError } = await supabase
       .from("users")
-      .select("id, first_reminder_days, first_reminder_time, second_reminder_days, second_reminder_time")
+      .select("id, first_reminder_days, first_reminder_time, second_reminder_days, second_reminder_time, timezone")
       .eq("notifications_enabled", true);
 
     if (usersError) {
@@ -133,28 +142,30 @@ serve(async (req: Request) => {
       throw usersError;
     }
 
-    // Фильтруем: только пользователей, чьё время уведомления = текущий час
+    // Фильтруем пользователей: текущий час в ИХ таймзоне совпадает с настроенным временем
     const daysSet = new Set<number>();
     const userReminderMap: Record<string, Set<number>> = {};
 
     for (const u of (users || [])) {
+      const userTimezone = u.timezone || "Europe/Moscow";
+      const currentUserHour = getCurrentHourInTimezone(userTimezone);
       const userDays = new Set<number>();
 
-      // Проверяем первое напоминание: час совпадает?
+      // Проверяем первое напоминание: час в таймзоне пользователя совпадает?
       if (u.first_reminder_days >= 0) {
         const timeStr = u.first_reminder_time || "09:00:00";
         const hour = parseInt(timeStr.split(":")[0], 10);
-        if (hour === currentMoscowHour) {
+        if (hour === currentUserHour) {
           daysSet.add(u.first_reminder_days);
           userDays.add(u.first_reminder_days);
         }
       }
 
-      // Проверяем второе напоминание: час совпадает?
+      // Проверяем второе напоминание: час в таймзоне пользователя совпадает?
       if (u.second_reminder_days >= 0) {
         const timeStr = u.second_reminder_time || "09:00:00";
         const hour = parseInt(timeStr.split(":")[0], 10);
-        if (hour === currentMoscowHour) {
+        if (hour === currentUserHour) {
           daysSet.add(u.second_reminder_days);
           userDays.add(u.second_reminder_days);
         }
@@ -198,7 +209,7 @@ serve(async (req: Request) => {
         continue;
       }
 
-      // Группируем по пользователям (только тем, у кого настроен этот days_ahead на текущий час)
+      // Группируем по пользователям (только тем, у кого настроен этот days_ahead и час совпал)
       const userSubscriptions: Record<number, any[]> = {};
       for (const sub of subscriptions) {
         const userDays = userReminderMap[sub.user_id];
@@ -253,7 +264,8 @@ serve(async (req: Request) => {
         failed: totalFailed,
         skipped: totalSkipped,
         days_checked: notificationDays,
-        moscow_hour: currentMoscowHour,
+        utc_hour: new Date().getUTCHours(),
+        users_matched: Object.keys(userReminderMap).length,
         timestamp: new Date().toISOString(),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

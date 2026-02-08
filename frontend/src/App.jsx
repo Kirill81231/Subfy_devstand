@@ -262,10 +262,11 @@ const apiHeaders = {
 
 const api = {
   async auth(initData) {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow';
     const response = await fetch(ENDPOINTS.auth, {
       method: 'POST',
       headers: apiHeaders,
-      body: JSON.stringify({ initData }),
+      body: JSON.stringify({ initData, timezone }),
     });
     if (!response.ok) throw new Error('Auth failed');
     return response.json();
@@ -311,10 +312,11 @@ const api = {
   },
 
   async saveNotificationSettings(userId, settings) {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow';
     const response = await fetch(ENDPOINTS.saveNotificationSettings, {
       method: 'POST',
       headers: apiHeaders,
-      body: JSON.stringify({ userId, settings }),
+      body: JSON.stringify({ userId, settings, timezone }),
     });
     if (!response.ok) throw new Error('Failed to save notification settings');
     return response.json();
@@ -2102,6 +2104,24 @@ export default function SubfyApp() {
 
       const authData = await api.auth(initData);
       setUser(authData.user);
+
+      // Загружаем настройки уведомлений из БД (источник правды — сервер, не localStorage)
+      const dbUser = authData.user;
+      if (dbUser) {
+        const formatTime = (t) => t ? t.substring(0, 5) : '09:00'; // "09:00:00" → "09:00"
+        setAppSettings(prev => ({
+          ...prev,
+          notificationsEnabled: dbUser.notifications_enabled ?? prev.notificationsEnabled,
+          firstReminder: {
+            days: dbUser.first_reminder_days ?? prev.firstReminder?.days ?? 1,
+            time: formatTime(dbUser.first_reminder_time) || prev.firstReminder?.time || '09:00',
+          },
+          secondReminder: {
+            days: dbUser.second_reminder_days ?? prev.secondReminder?.days ?? -1,
+            time: formatTime(dbUser.second_reminder_time) || prev.secondReminder?.time || '09:00',
+          },
+        }));
+      }
 
       const { subscriptions: subs } = await api.getSubscriptions(authData.user.id);
       setSubscriptions(subs || []);

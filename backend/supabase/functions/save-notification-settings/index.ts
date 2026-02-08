@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, settings } = await req.json();
+    const { userId, settings, timezone } = await req.json();
 
     if (!userId || !settings) {
       return new Response(
@@ -49,6 +49,11 @@ serve(async (req) => {
       if (typeof settings.secondReminder.time === "string") {
         updateData.second_reminder_time = settings.secondReminder.time;
       }
+    }
+
+    // Сохраняем таймзону пользователя
+    if (timezone && typeof timezone === "string") {
+      updateData.timezone = timezone;
     }
 
     if (Object.keys(updateData).length === 0) {

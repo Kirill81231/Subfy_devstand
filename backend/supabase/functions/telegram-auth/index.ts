@@ -14,7 +14,8 @@ serve(async (req) => {
   }
 
   try {
-    const { initData } = await req.json();
+    const reqBody = await req.json();
+    const { initData, timezone } = reqBody;
     console.log("Auth request received");
 
     if (!initData) {
@@ -48,7 +49,7 @@ serve(async (req) => {
     const userId = String(userData.id);
     const firstName = userData.first_name || null;
 
-    console.log("User:", userId, firstName);
+    console.log("User:", userId, firstName, "TZ:", timezone);
 
     // Подключаемся к Supabase
     const supabase = createClient(
@@ -56,11 +57,16 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Создаём или обновляем пользователя
+    // Создаём или обновляем пользователя (включая timezone)
+    const upsertData: Record<string, unknown> = { id: userId, first_name: firstName };
+    if (timezone && typeof timezone === "string") {
+      upsertData.timezone = timezone;
+    }
+
     const { data: user, error } = await supabase
       .from("users")
       .upsert(
-        { id: userId, first_name: firstName },
+        upsertData,
         { onConflict: "id" }
       )
       .select()
@@ -70,9 +76,9 @@ serve(async (req) => {
       console.error("DB Error:", error);
       // Даже если ошибка в БД, возвращаем данные пользователя
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           user: { id: userId, first_name: firstName },
-          dbError: error.message 
+          dbError: error.message
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
