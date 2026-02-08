@@ -1,6 +1,6 @@
 // SubFi - Notification Sender Edge Function
 // Отправляет уведомления о предстоящих списаниях через Telegram Bot API
-// Вызывается через pg_cron каждый час
+// Вызывается через pg_cron каждую минуту
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -94,8 +94,8 @@ function createNotificationText(subscriptions: any[], daysUntil: number): string
   return text;
 }
 
-// Получить текущий час в таймзоне пользователя
-function getCurrentHourInTimezone(timezone: string): number {
+// Получить текущий час и минуту в таймзоне пользователя
+function getCurrentTimeInTimezone(timezone: string): { hour: number; minute: number } {
   try {
     const now = new Date();
     const hourStr = new Intl.DateTimeFormat("en-US", {
@@ -103,14 +103,24 @@ function getCurrentHourInTimezone(timezone: string): number {
       hour12: false,
       timeZone: timezone,
     }).format(now);
-    return parseInt(hourStr, 10) % 24; // "24" → 0
+    const minuteStr = new Intl.DateTimeFormat("en-US", {
+      minute: "numeric",
+      timeZone: timezone,
+    }).format(now);
+    return {
+      hour: parseInt(hourStr, 10) % 24,
+      minute: parseInt(minuteStr, 10),
+    };
   } catch {
     // Если таймзона невалидна — фолбэк на Europe/Moscow
     const now = new Date();
     const moscowOffset = 3 * 60;
     const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    const moscowMinutes = utcMinutes + moscowOffset;
-    return Math.floor(((moscowMinutes % 1440) + 1440) % 1440 / 60);
+    const totalMinutes = ((utcMinutes + moscowOffset) % 1440 + 1440) % 1440;
+    return {
+      hour: Math.floor(totalMinutes / 60),
+      minute: totalMinutes % 60,
+    };
   }
 }
 
@@ -142,30 +152,34 @@ serve(async (req: Request) => {
       throw usersError;
     }
 
-    // Фильтруем пользователей: текущий час в ИХ таймзоне совпадает с настроенным временем
+    // Фильтруем пользователей: текущий час И минута в ИХ таймзоне совпадает с настроенным временем
     const daysSet = new Set<number>();
     const userReminderMap: Record<string, Set<number>> = {};
 
     for (const u of (users || [])) {
       const userTimezone = u.timezone || "Europe/Moscow";
-      const currentUserHour = getCurrentHourInTimezone(userTimezone);
+      const { hour: currentHour, minute: currentMinute } = getCurrentTimeInTimezone(userTimezone);
       const userDays = new Set<number>();
 
-      // Проверяем первое напоминание: час в таймзоне пользователя совпадает?
+      // Проверяем первое напоминание: час и минута совпадают?
       if (u.first_reminder_days >= 0) {
         const timeStr = u.first_reminder_time || "09:00:00";
-        const hour = parseInt(timeStr.split(":")[0], 10);
-        if (hour === currentUserHour) {
+        const parts = timeStr.split(":");
+        const hour = parseInt(parts[0], 10);
+        const minute = parseInt(parts[1], 10);
+        if (hour === currentHour && minute === currentMinute) {
           daysSet.add(u.first_reminder_days);
           userDays.add(u.first_reminder_days);
         }
       }
 
-      // Проверяем второе напоминание: час в таймзоне пользователя совпадает?
+      // Проверяем второе напоминание: час и минута совпадают?
       if (u.second_reminder_days >= 0) {
         const timeStr = u.second_reminder_time || "09:00:00";
-        const hour = parseInt(timeStr.split(":")[0], 10);
-        if (hour === currentUserHour) {
+        const parts = timeStr.split(":");
+        const hour = parseInt(parts[0], 10);
+        const minute = parseInt(parts[1], 10);
+        if (hour === currentHour && minute === currentMinute) {
           daysSet.add(u.second_reminder_days);
           userDays.add(u.second_reminder_days);
         }
