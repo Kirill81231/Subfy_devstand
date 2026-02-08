@@ -922,7 +922,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               <div className="template-grid">
                 {filteredTemplates.map(template => (
                   <button key={template.id} className="template-item" onClick={() => selectTemplate(template)}>
-                    <Logo domain={template.domain} emoji={template.icon} color={template.color} size={40} logoUrl={template.logo_url} />
+                    <Logo domain={template.domain} emoji={template.icon} color={template.color} size={48} logoUrl={template.logo_url} />
                     <span>{template.name}</span>
                   </button>
                 ))}
@@ -3312,8 +3312,8 @@ const styles = `
   .template-item:active { transform: scale(0.97); }
 
   .template-icon {
-    width: 40px;
-    height: 40px;
+    width: 48px;
+    height: 48px;
     border-radius: 12px;
     display: flex;
     align-items: center;
