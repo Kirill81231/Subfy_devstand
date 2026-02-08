@@ -1,6 +1,6 @@
 // SubFi - Notification Sender Edge Function
 // Отправляет уведомления о предстоящих списаниях через Telegram Bot API
-// Вызывается через pg_cron ежедневно
+// Вызывается через pg_cron каждый час
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -94,6 +94,15 @@ function createNotificationText(subscriptions: any[], daysUntil: number): string
   return text;
 }
 
+// Получить текущий час в Москве (UTC+3)
+function getMoscowHour(): number {
+  const now = new Date();
+  const moscowOffset = 3 * 60; // UTC+3 in minutes
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const moscowMinutes = utcMinutes + moscowOffset;
+  return Math.floor(((moscowMinutes % 1440) + 1440) % 1440 / 60);
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -110,11 +119,13 @@ serve(async (req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const currentMoscowHour = getMoscowHour();
 
-    // Получаем всех пользователей с включёнными уведомлениями
+    // Получаем пользователей с включёнными уведомлениями
+    // Фильтруем по часу: первый или второй reminder time должен совпадать с текущим часом
     const { data: users, error: usersError } = await supabase
       .from("users")
-      .select("id, first_reminder_days, second_reminder_days")
+      .select("id, first_reminder_days, first_reminder_time, second_reminder_days, second_reminder_time")
       .eq("notifications_enabled", true);
 
     if (usersError) {
@@ -122,29 +133,57 @@ serve(async (req: Request) => {
       throw usersError;
     }
 
-    // Собираем уникальные days_ahead и маппинг user → настроенные дни
+    // Фильтруем: только пользователей, чьё время уведомления = текущий час
     const daysSet = new Set<number>();
     const userReminderMap: Record<string, Set<number>> = {};
 
     for (const u of (users || [])) {
       const userDays = new Set<number>();
+
+      // Проверяем первое напоминание: час совпадает?
       if (u.first_reminder_days >= 0) {
-        daysSet.add(u.first_reminder_days);
-        userDays.add(u.first_reminder_days);
+        const timeStr = u.first_reminder_time || "09:00:00";
+        const hour = parseInt(timeStr.split(":")[0], 10);
+        if (hour === currentMoscowHour) {
+          daysSet.add(u.first_reminder_days);
+          userDays.add(u.first_reminder_days);
+        }
       }
+
+      // Проверяем второе напоминание: час совпадает?
       if (u.second_reminder_days >= 0) {
-        daysSet.add(u.second_reminder_days);
-        userDays.add(u.second_reminder_days);
+        const timeStr = u.second_reminder_time || "09:00:00";
+        const hour = parseInt(timeStr.split(":")[0], 10);
+        if (hour === currentMoscowHour) {
+          daysSet.add(u.second_reminder_days);
+          userDays.add(u.second_reminder_days);
+        }
       }
-      userReminderMap[u.id] = userDays;
+
+      if (userDays.size > 0) {
+        userReminderMap[u.id] = userDays;
+      }
     }
 
     const notificationDays = Array.from(daysSet).sort((a, b) => b - a);
     let totalSent = 0;
     let totalFailed = 0;
+    let totalSkipped = 0;
+
+    // Получаем уже отправленные уведомления за сегодня для дедупликации
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const { data: sentToday } = await supabase
+      .from("notifications")
+      .select("user_id, subscription_id, type")
+      .eq("is_sent", true)
+      .gte("sent_at", todayStart.toISOString());
+
+    const sentKeys = new Set(
+      (sentToday || []).map(n => `${n.user_id}:${n.subscription_id}:${n.type}`)
+    );
 
     for (const daysAhead of notificationDays) {
-      // Получаем подписки для уведомления
       const { data: subscriptions, error } = await supabase.rpc(
         "get_subscriptions_for_notification",
         { days_ahead: daysAhead }
@@ -159,11 +198,19 @@ serve(async (req: Request) => {
         continue;
       }
 
-      // Группируем по пользователям (только тем, у кого настроен этот days_ahead)
+      // Группируем по пользователям (только тем, у кого настроен этот days_ahead на текущий час)
       const userSubscriptions: Record<number, any[]> = {};
       for (const sub of subscriptions) {
         const userDays = userReminderMap[sub.user_id];
         if (!userDays || !userDays.has(daysAhead)) continue;
+
+        // Дедупликация: не отправлять повторно
+        const notifType = daysAhead === 0 ? "billing" : "reminder";
+        const key = `${sub.user_id}:${sub.subscription_id}:${notifType}`;
+        if (sentKeys.has(key)) {
+          totalSkipped++;
+          continue;
+        }
 
         if (!userSubscriptions[sub.telegram_id]) {
           userSubscriptions[sub.telegram_id] = [];
@@ -179,7 +226,6 @@ serve(async (req: Request) => {
         if (success) {
           totalSent++;
 
-          // Записываем в историю уведомлений
           for (const sub of subs) {
             await supabase.from("notifications").insert({
               user_id: sub.user_id,
@@ -205,7 +251,9 @@ serve(async (req: Request) => {
         success: true,
         sent: totalSent,
         failed: totalFailed,
+        skipped: totalSkipped,
         days_checked: notificationDays,
+        moscow_hour: currentMoscowHour,
         timestamp: new Date().toISOString(),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -137,19 +137,37 @@ const SYMBOL_OPTIONS = [
 // ============================================
 // УТИЛИТЫ
 // ============================================
+// Парсит дату "YYYY-MM-DD" как ЛОКАЛЬНУЮ (не UTC)
+const parseLocalDate = (str) => {
+  if (!str) return null;
+  if (str instanceof Date) return new Date(str.getFullYear(), str.getMonth(), str.getDate());
+  const s = String(str).split('T')[0];
+  const [y, m, d] = s.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+};
+
+const getLocalToday = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+};
+
+const getLocalDateString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const calculateNextBillingDate = (firstDate, cycle) => {
-  if (!firstDate) return null;
-  const date = new Date(firstDate);
-  if (isNaN(date.getTime())) return null;
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
+  const date = parseLocalDate(firstDate);
+  if (!date) return null;
+
+  const today = getLocalToday();
+
   if (cycle === 'one-time' || cycle === 'trial') {
     return date > today ? date : null;
   }
 
-  while (date <= today) {
+  while (date < today) {
     switch (cycle) {
       case 'weekly': date.setDate(date.getDate() + 7); break;
       case 'biweekly': date.setDate(date.getDate() + 14); break;
@@ -164,9 +182,8 @@ const calculateNextBillingDate = (firstDate, cycle) => {
 };
 
 const getBillingDatesInMonth = (startDate, cycle, year, month) => {
-  if (!startDate) return [];
-  const date = new Date(startDate);
-  if (isNaN(date.getTime())) return [];
+  const date = parseLocalDate(startDate);
+  if (!date) return [];
 
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
@@ -195,18 +212,22 @@ const getBillingDatesInMonth = (startDate, cycle, year, month) => {
 };
 
 const formatDate = (date) => {
-  if (!date || isNaN(new Date(date).getTime())) return 'дата не указана';
-  return new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  const d = parseLocalDate(date);
+  if (!d) return 'дата не указана';
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 };
 
 const formatDateFull = (date) => {
-  if (!date || isNaN(new Date(date).getTime())) return 'дата не указана';
-  return new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const d = parseLocalDate(date);
+  if (!d) return 'дата не указана';
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
 const getDaysUntil = (date) => {
   if (!date) return null;
-  return Math.ceil((new Date(date) - new Date()) / (1000 * 60 * 60 * 24));
+  const target = parseLocalDate(date) || new Date(date);
+  const today = getLocalToday();
+  return Math.round((target - today) / (1000 * 60 * 60 * 24));
 };
 
 const formatDaysUntil = (days) => {
@@ -800,7 +821,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     amount: '',
     currency: 'RUB',
     billingCycle: 'monthly',
-    firstBillingDate: new Date().toISOString().split('T')[0],
+    firstBillingDate: getLocalDateString(),
     category: 'Другое',
     color: '#6366f1',
     icon: '📦',
