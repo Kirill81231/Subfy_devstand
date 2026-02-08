@@ -507,7 +507,7 @@ const Logo = ({ domain, emoji, color, size = 32, logoUrl }) => {
   return (
     <div className="logo-container" style={{
       width: size, height: size,
-      background: loaded ? 'white' : color + '20',
+      background: loaded ? 'transparent' : color + '20',
       borderRadius: size > 60 ? 20 : 8, overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     }}>
@@ -922,7 +922,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
               <div className="template-grid">
                 {filteredTemplates.map(template => (
                   <button key={template.id} className="template-item" onClick={() => selectTemplate(template)}>
-                    <Logo domain={template.domain} emoji={template.icon} color={template.color} size={48} logoUrl={template.logo_url} />
+                    <Logo domain={template.domain} emoji={template.icon} color={template.color} size={40} logoUrl={template.logo_url} />
                     <span>{template.name}</span>
                   </button>
                 ))}
@@ -3300,7 +3300,7 @@ const styles = `
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     padding: 16px 8px;
     background: var(--bg-secondary);
     border: 2px solid transparent;
@@ -3312,15 +3312,15 @@ const styles = `
   .template-item:active { transform: scale(0.97); }
 
   .template-icon {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  .template-item span { font-size: 0.8125rem; font-weight: 600; text-align: center; line-height: 1.3; }
+  .template-item span { font-size: 0.875rem; font-weight: 600; text-align: center; line-height: 1.3; color: var(--text-primary); }
 
   /* Subscription Form */
   .subscription-form {
