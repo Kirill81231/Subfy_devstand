@@ -515,7 +515,7 @@ const Logo = ({ domain, emoji, color, size = 32, logoUrl }) => {
         src={imageUrl}
         alt=""
         style={{ 
-          width: size - 4, height: size - 4, objectFit: 'contain',
+          width: size, height: size, objectFit: 'cover',
           opacity: loaded ? 1 : 0, transition: 'opacity 0.2s'
         }}
         onLoad={() => setLoaded(true)}
