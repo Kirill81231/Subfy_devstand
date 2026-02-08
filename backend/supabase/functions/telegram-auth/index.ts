@@ -86,8 +86,16 @@ serve(async (req) => {
 
     console.log("User saved:", user);
 
+    // Загружаем подписки пользователя сразу — чтобы фронтенд не делал отдельный запрос
+    const { data: subscriptions } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
+
     return new Response(
-      JSON.stringify({ user }),
+      JSON.stringify({ user, subscriptions: subscriptions || [] }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

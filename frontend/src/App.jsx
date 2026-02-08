@@ -2081,12 +2081,10 @@ export default function SubfyApp() {
 
   const initializeApp = async () => {
     try {
-      // Загружаем шаблоны из БД (не зависит от авторизации)
-      try {
-        const { templates } = await api.getTemplates();
-        setDbTemplates(templates || []);
-      } catch (e) {
-        console.error('Templates fetch error:', e);
+      // Шаблоны из кэша — мгновенно
+      const cachedTemplates = localStorage.getItem('subfy_templates');
+      if (cachedTemplates) {
+        try { setDbTemplates(JSON.parse(cachedTemplates)); } catch {}
       }
 
       const tg = getTelegram();
@@ -2099,10 +2097,28 @@ export default function SubfyApp() {
         if (savedSubs) setSubscriptions(JSON.parse(savedSubs));
         setUser({ id: 'dev-user', first_name: 'Developer' });
         setAppState(hasSeenOnboarding ? 'main' : 'onboarding');
+        // Обновить шаблоны в фоне
+        api.getTemplates().then(({ templates }) => {
+          if (templates) {
+            setDbTemplates(templates);
+            localStorage.setItem('subfy_templates', JSON.stringify(templates));
+          }
+        }).catch(() => {});
         return;
       }
 
-      const authData = await api.auth(initData);
+      // Параллельно: auth (с подписками) + шаблоны из БД
+      const [authData, templatesData] = await Promise.all([
+        api.auth(initData),
+        api.getTemplates().catch(() => ({ templates: null })),
+      ]);
+
+      // Обновить шаблоны из БД
+      if (templatesData.templates) {
+        setDbTemplates(templatesData.templates);
+        localStorage.setItem('subfy_templates', JSON.stringify(templatesData.templates));
+      }
+
       setUser(authData.user);
 
       // Загружаем настройки уведомлений из БД (источник правды — сервер, не localStorage)
@@ -2123,8 +2139,8 @@ export default function SubfyApp() {
         }));
       }
 
-      const { subscriptions: subs } = await api.getSubscriptions(authData.user.id);
-      setSubscriptions(subs || []);
+      // Подписки приходят вместе с auth — отдельный запрос не нужен
+      setSubscriptions(authData.subscriptions || []);
       setAppState(hasSeenOnboarding ? 'main' : 'onboarding');
     } catch (err) {
       console.error('Init error:', err);

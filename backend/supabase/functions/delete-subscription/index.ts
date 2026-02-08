@@ -27,10 +27,17 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Soft delete - помечаем как неактивную
+    // Удаляем связанные уведомления
+    await supabase
+      .from("notifications")
+      .delete()
+      .eq("subscription_id", subscriptionId)
+      .eq("user_id", userId);
+
+    // Hard delete — полное удаление подписки
     const { error } = await supabase
       .from("subscriptions")
-      .update({ is_active: false })
+      .delete()
       .eq("id", subscriptionId)
       .eq("user_id", userId);
 
