@@ -507,7 +507,7 @@ const Logo = ({ domain, emoji, color, size = 32, logoUrl }) => {
   return (
     <div className="logo-container" style={{
       width: size, height: size,
-      background: loaded ? 'transparent' : color + '20',
+      background: loaded ? 'white' : color + '20',
       borderRadius: size > 60 ? 20 : 8, overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     }}>
