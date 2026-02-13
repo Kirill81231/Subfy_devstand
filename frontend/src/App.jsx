@@ -167,7 +167,7 @@ const calculateNextBillingDate = (firstDate, cycle) => {
     return date > today ? date : null;
   }
 
-  while (date < today) {
+  while (date <= today) {
     switch (cycle) {
       case 'weekly': date.setDate(date.getDate() + 7); break;
       case 'biweekly': date.setDate(date.getDate() + 14); break;
@@ -863,6 +863,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
       ...formData,
       id: editData?.id,
       amount: parseFloat(formData.amount),
+      next_billing_date: formData.firstBillingDate,
       first_billing_date: formData.firstBillingDate,
       billing_cycle: formData.billingCycle,
       notify_enabled: formData.notifyEnabled,
