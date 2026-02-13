@@ -1916,6 +1916,20 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
 const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscription, currentMonth, onChangeMonth }) => {
   const [selectedDay, setSelectedDay] = useState(null);
   const [sheetClosing, setSheetClosing] = useState(false);
+  const [btnAnimating, setBtnAnimating] = useState(false);
+  const prevIsCurrentRef = useRef(true);
+
+  const now = new Date();
+  const isCurrentMonth = currentMonth.getFullYear() === now.getFullYear() && currentMonth.getMonth() === now.getMonth();
+
+  useEffect(() => {
+    if (prevIsCurrentRef.current !== isCurrentMonth) {
+      setBtnAnimating(true);
+      const t = setTimeout(() => setBtnAnimating(false), 350);
+      prevIsCurrentRef.current = isCurrentMonth;
+      return () => clearTimeout(t);
+    }
+  }, [isCurrentMonth]);
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
@@ -2045,11 +2059,18 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
         })}
       </div>
 
-      {/* Add subscription button */}
-      <button className="calendar-add-btn" onClick={() => onOpenForm?.(null)}>
-        <Plus size={20} />
-        Добавить подписку
-      </button>
+      {/* Bottom action button */}
+      {isCurrentMonth ? (
+        <button className={`calendar-add-btn ${btnAnimating ? 'drum-in' : ''}`} onClick={() => onOpenForm?.(null)}>
+          <Plus size={20} />
+          Добавить подписку
+        </button>
+      ) : (
+        <button className={`calendar-add-btn calendar-return-btn ${btnAnimating ? 'drum-in' : ''}`} onClick={() => onChangeMonth(new Date())}>
+          <ArrowLeft size={20} />
+          Вернуться к активному месяцу
+        </button>
+      )}
 
       {/* Bottom Sheet */}
       {selectedDay && (
@@ -5610,6 +5631,15 @@ const styles = `
   }
 
   .calendar-add-btn:active { transform: scale(0.98); }
+
+  .calendar-add-btn.drum-in {
+    animation: drumRoll 0.35s ease;
+  }
+
+  .calendar-return-btn {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
 
   /* Bottom Sheet */
   .day-bottom-sheet-overlay {
