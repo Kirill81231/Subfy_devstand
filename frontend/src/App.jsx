@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Plus, X, Calendar, ChevronRight, ChevronLeft, Sun, Moon, Search, Check, Trash2, Edit3, Bell, CreditCard, Loader, Settings, TrendingUp, PieChart, ArrowLeft, BellOff, Clock, ExternalLink, Camera, Landmark, ShoppingCart, ShoppingBag, Tv, Music, Gamepad2, Cloud, Phone, Wifi, Zap, Droplet, Home, Car, Plane, Heart, Pill, GraduationCap, Briefcase, Lock, Key, Keyboard, Globe, Star, CircleDot, Monitor, Headphones, BookOpen } from 'lucide-react';
+import { Plus, X, Calendar, ChevronRight, ChevronLeft, Sun, Moon, Search, Check, Trash2, Edit3, Bell, CreditCard, Loader, Settings, TrendingUp, PieChart, ArrowLeft, BellOff, Clock, ExternalLink, Camera, Landmark, ShoppingCart, ShoppingBag, Tv, Music, Gamepad2, Cloud, Phone, Wifi, Zap, Droplet, Home, Car, Plane, Heart, Pill, GraduationCap, Briefcase, Lock, Key, Keyboard, Globe, Star, CircleDot, Monitor, Headphones, BookOpen, BarChart3 } from 'lucide-react';
 
 // ============================================
 // КОНФИГУРАЦИЯ
@@ -776,7 +776,7 @@ const AmountModal = ({ visible, amount, currency, currencies, onAmountChange, on
 // ============================================
 // КОМПОНЕНТ: ФОРМА ПОДПИСКИ
 // ============================================
-const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, defaultNotificationSettings, customCategories = [], onAddCategory, categories = CATEGORIES }) => {
+const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, defaultNotificationSettings, customCategories = [], onAddCategory, categories = CATEGORIES, preselectedDate }) => {
   const [step, setStep] = useState(editData ? 2 : 1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Все');
@@ -823,7 +823,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
     amount: '',
     currency: 'RUB',
     billingCycle: 'monthly',
-    firstBillingDate: getLocalDateString(),
+    firstBillingDate: preselectedDate || getLocalDateString(),
     category: 'Другое',
     color: '#6366f1',
     icon: '📦',
@@ -1768,22 +1768,23 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
 // ============================================
 // КОМПОНЕНТ: КАЛЕНДАРЬ
 // ============================================
-const CalendarView = ({ subscriptions, currencies }) => {
+const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscription }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
-  
+  const [sheetClosing, setSheetClosing] = useState(false);
+
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const days = [];
-    
+
     const startDay = firstDay.getDay() || 7;
     for (let i = 1; i < startDay; i++) {
       days.push({ date: null, subscriptions: [] });
     }
-    
+
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const dayDate = new Date(year, month, day);
       const daySubs = subscriptions.filter(sub => {
@@ -1794,7 +1795,7 @@ const CalendarView = ({ subscriptions, currencies }) => {
       });
       days.push({ date: dayDate, subscriptions: daySubs });
     }
-    
+
     return days;
   };
 
@@ -1820,8 +1821,40 @@ const CalendarView = ({ subscriptions, currencies }) => {
     const newDate = new Date(currentMonth);
     newDate.setMonth(newDate.getMonth() + delta);
     setCurrentMonth(newDate);
-    setSelectedDay(null);
+    closeSheet();
   };
+
+  const formatDateForForm = (date) => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+
+  const handleDayClick = (day) => {
+    if (!day.date) return;
+    if (day.subscriptions.length > 0) {
+      setSelectedDay(day);
+      setSheetClosing(false);
+    } else {
+      onOpenForm?.(formatDateForForm(day.date));
+    }
+  };
+
+  const closeSheet = () => {
+    if (selectedDay) {
+      setSheetClosing(true);
+      setTimeout(() => {
+        setSelectedDay(null);
+        setSheetClosing(false);
+      }, 250);
+    }
+  };
+
+  const sheetTotal = useMemo(() => {
+    if (!selectedDay) return 0;
+    return selectedDay.subscriptions.reduce((sum, sub) => {
+      const currency = currencies.find(c => c.code === sub.currency) || currencies[0];
+      return sum + (sub.amount * currency.rate);
+    }, 0);
+  }, [selectedDay, currencies]);
 
   return (
     <div className="calendar-view">
@@ -1833,32 +1866,45 @@ const CalendarView = ({ subscriptions, currencies }) => {
         </div>
         <button onClick={() => changeMonth(1)}><ChevronRight size={20} /></button>
       </div>
-      
+
       <div className="calendar-weekdays">
         {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => (
           <div key={day} className="weekday">{day}</div>
         ))}
       </div>
-      
+
       <div className="calendar-grid">
         {days.map((day, i) => {
-          const isSelected = selectedDay?.date?.getTime() === day.date?.getTime();
+          const isToday = day.date?.toDateString() === new Date().toDateString();
+          const hasSubs = day.subscriptions.length > 0;
+          const firstColor = hasSubs ? day.subscriptions[0].color : null;
           return (
-            <div 
-              key={i} 
-              className={`calendar-day ${!day.date ? 'empty' : ''} ${day.subscriptions.length > 0 ? 'has-subs' : ''} ${day.date?.toDateString() === new Date().toDateString() ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
-              onClick={() => day.date && day.subscriptions.length > 0 && setSelectedDay(isSelected ? null : day)}
+            <div
+              key={i}
+              className={`calendar-day ${!day.date ? 'empty' : ''} ${hasSubs ? 'has-subs' : ''} ${isToday ? 'today' : ''}`}
+              style={hasSubs && isToday ? { background: firstColor + '25' } : hasSubs ? { background: firstColor + '15' } : undefined}
+              onClick={() => handleDayClick(day)}
             >
               {day.date && (
                 <>
+                  <div className="day-logo-container">
+                    {hasSubs && (
+                      day.subscriptions.length === 1 ? (
+                        <Logo domain={day.subscriptions[0].domain} emoji={day.subscriptions[0].icon} color={day.subscriptions[0].color} size={22} logoUrl={day.subscriptions[0].logo_url} />
+                      ) : day.subscriptions.length === 2 ? (
+                        <div className="day-logos-pair">
+                          <Logo domain={day.subscriptions[0].domain} emoji={day.subscriptions[0].icon} color={day.subscriptions[0].color} size={18} logoUrl={day.subscriptions[0].logo_url} />
+                          <Logo domain={day.subscriptions[1].domain} emoji={day.subscriptions[1].icon} color={day.subscriptions[1].color} size={18} logoUrl={day.subscriptions[1].logo_url} />
+                        </div>
+                      ) : (
+                        <div className="day-logos-pair">
+                          <Logo domain={day.subscriptions[0].domain} emoji={day.subscriptions[0].icon} color={day.subscriptions[0].color} size={18} logoUrl={day.subscriptions[0].logo_url} />
+                          <div className="day-count-badge">+{day.subscriptions.length - 1}</div>
+                        </div>
+                      )
+                    )}
+                  </div>
                   <span className="day-number">{day.date.getDate()}</span>
-                  {day.subscriptions.length > 0 && (
-                    <div className="day-subs">
-                      {day.subscriptions.slice(0, 3).map(sub => (
-                        <div key={sub.id} className="day-sub-dot" style={{ background: sub.color }} />
-                      ))}
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -1866,28 +1912,51 @@ const CalendarView = ({ subscriptions, currencies }) => {
         })}
       </div>
 
+      {/* Add subscription button */}
+      <button className="calendar-add-btn" onClick={() => onOpenForm?.(null)}>
+        <Plus size={20} />
+        Добавить подписку
+      </button>
+
+      {/* Bottom Sheet */}
       {selectedDay && (
-        <div className="day-details">
-          <div className="day-details-header">
-            <h4>{formatDateFull(selectedDay.date)}</h4>
-            <button className="close-details" onClick={() => setSelectedDay(null)}><X size={18} /></button>
-          </div>
-          <div className="day-details-list">
-            {selectedDay.subscriptions.map(sub => {
-              const currency = currencies.find(c => c.code === sub.currency) || currencies[0];
-              return (
-                <div key={sub.id} className="day-detail-item">
-                  <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} logoUrl={sub.logo_url} />
-                  <div className="detail-info">
-                    <span className="detail-name">{sub.name}</span>
-                    <span className="detail-category">{sub.category}</span>
+        <>
+          <div className={`day-bottom-sheet-overlay ${sheetClosing ? 'closing' : ''}`} onClick={closeSheet} />
+          <div className={`day-bottom-sheet ${sheetClosing ? 'closing' : ''}`}>
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <h4>Подписки</h4>
+              <span className="sheet-date">{formatDateFull(selectedDay.date)}</span>
+            </div>
+            <div className="sheet-list">
+              {selectedDay.subscriptions.map(sub => {
+                const currency = currencies.find(c => c.code === sub.currency) || currencies[0];
+                const cycle = BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
+                return (
+                  <div key={sub.id} className="sheet-subscription-item" onClick={() => { closeSheet(); onEditSubscription?.(sub); }}>
+                    <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={40} logoUrl={sub.logo_url} />
+                    <div className="sheet-sub-info">
+                      <span className="sheet-sub-name">{sub.name}</span>
+                      <span className="sheet-sub-cycle">{cycle?.label || 'Ежемесячно'}</span>
+                    </div>
+                    <div className="sheet-sub-right">
+                      <span className="sheet-sub-amount">{sub.amount.toLocaleString('ru-RU')} {currency.symbol}</span>
+                      <ChevronRight size={16} className="sheet-chevron" />
+                    </div>
                   </div>
-                  <span className="detail-amount">{sub.amount.toLocaleString('ru-RU')} {currency.symbol}</span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+            <button className="sheet-add-btn" onClick={() => { const d = formatDateForForm(selectedDay.date); closeSheet(); onOpenForm?.(d); }}>
+              <Plus size={18} />
+              Добавить подписку
+            </button>
+            <div className="sheet-total">
+              <span>Итого</span>
+              <span className="sheet-total-amount">{Math.round(sheetTotal).toLocaleString('ru-RU')} ₽</span>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -1905,7 +1974,8 @@ export default function SubfyApp() {
     const tg = getTelegram();
     return tg?.colorScheme || 'dark';
   });
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState('calendar');
+  const [preselectedDate, setPreselectedDate] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingSubscription, setEditingSubscription] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
@@ -2318,43 +2388,31 @@ export default function SubfyApp() {
       <header className="app-header">
         <span className="logo">Subfy</span>
         <div className="header-actions">
+          <button className="icon-btn" onClick={() => setShowAnalytics(true)}>
+            <BarChart3 size={20} />
+          </button>
           <button className="icon-btn" onClick={() => setShowSettings(true)}>
             <Settings size={20} />
-          </button>
-          <button className="icon-btn primary" onClick={() => {
-            hapticFeedbackForCreate();
-            setEditingSubscription(null);
-            setShowForm(true);
-          }}>
-            <Plus size={20} />
           </button>
         </div>
       </header>
 
-      {/* Stats Card - кликабельный для аналитики */}
-      <div className="stats-card" onClick={() => setShowAnalytics(true)}>
-        <div className="stats-main">
-          <span className="stats-amount">{stats.monthly.toLocaleString('ru-RU')}</span>
-          <span className="stats-currency">₽</span>
-          <p className="stats-label">в месяц</p>
-        </div>
-        <div className="stats-yearly">
-          <span>{stats.yearly.toLocaleString('ru-RU')} ₽ в год</span>
-        </div>
-        <div className="stats-arrow">
-          <ChevronRight size={20} />
-        </div>
+      {/* Hero Amount */}
+      <div className="hero-amount">
+        <div className="hero-amount-glow" />
+        <span className="hero-amount-text">₽ {stats.monthly.toLocaleString('ru-RU')}</span>
+        <span className="hero-badge">В месяц</span>
       </div>
 
       {/* Tabs */}
       <div className="view-tabs">
-        <button className={`view-tab ${activeTab === 'home' ? 'active' : ''}`} onClick={() => setActiveTab('home')}>
-          <CreditCard size={18} />
-          Подписки
-        </button>
         <button className={`view-tab ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => setActiveTab('calendar')}>
           <Calendar size={18} />
           Календарь
+        </button>
+        <button className={`view-tab ${activeTab === 'home' ? 'active' : ''}`} onClick={() => setActiveTab('home')}>
+          <CreditCard size={18} />
+          Подписки
         </button>
       </div>
 
@@ -2443,14 +2501,26 @@ export default function SubfyApp() {
             )}
           </>
         ) : (
-          <CalendarView subscriptions={subscriptions} currencies={CURRENCIES} />
+          <CalendarView
+            subscriptions={subscriptions}
+            currencies={CURRENCIES}
+            onOpenForm={(date) => {
+              setPreselectedDate(date);
+              setEditingSubscription(null);
+              setShowForm(true);
+            }}
+            onEditSubscription={(sub) => {
+              setEditingSubscription(sub);
+              setShowForm(true);
+            }}
+          />
         )}
       </div>
 
       {/* Form Modal */}
       {showForm && (
         <SubscriptionForm
-          onClose={() => { setShowForm(false); setEditingSubscription(null); }}
+          onClose={() => { setShowForm(false); setEditingSubscription(null); setPreselectedDate(null); }}
           onSave={saveSubscription}
           editData={editingSubscription}
           templates={effectiveTemplates}
@@ -2459,6 +2529,7 @@ export default function SubfyApp() {
           customCategories={customCategories}
           onAddCategory={addCustomCategory}
           categories={allCategories}
+          preselectedDate={preselectedDate}
         />
       )}
 
@@ -2725,38 +2796,50 @@ const styles = `
   .icon-btn.primary { background: var(--accent); color: white; }
   .icon-btn.delete:active { background: var(--danger); color: white; }
 
-  /* Stats Card */
-  .stats-card {
-    background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
-    border-radius: 20px;
-    padding: 20px;
-    margin: 0 16px 16px;
-    color: white;
-    flex-shrink: 0;
-    cursor: pointer;
+  /* Hero Amount */
+  .hero-amount {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 16px 12px;
     position: relative;
-    transition: transform 0.2s;
+    flex-shrink: 0;
   }
 
-  .stats-card:active { transform: scale(0.98); }
-
-  .stats-main { text-align: center; margin-bottom: 8px; }
-  .stats-amount { font-size: 2.5rem; font-weight: 800; line-height: 1; }
-  .stats-currency { font-size: 1.25rem; font-weight: 600; opacity: 0.8; margin-left: 4px; }
-  .stats-label { font-size: 0.875rem; opacity: 0.8; margin-top: 4px; }
-
-  .stats-yearly {
-    text-align: center;
-    font-size: 0.9rem;
-    opacity: 0.9;
-  }
-
-  .stats-arrow {
+  .hero-amount-glow {
     position: absolute;
-    right: 16px;
+    width: 180px;
+    height: 80px;
     top: 50%;
-    transform: translateY(-50%);
-    opacity: 0.7;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse, var(--accent) 0%, transparent 70%);
+    opacity: 0.2;
+    filter: blur(30px);
+    pointer-events: none;
+  }
+
+  .hero-amount-text {
+    font-size: 2.75rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    position: relative;
+    z-index: 1;
+    line-height: 1;
+  }
+
+  .hero-badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: rgba(100, 180, 80, 0.2);
+    color: #6ab854;
+    position: relative;
+    z-index: 1;
   }
 
   /* Tabs */
@@ -5091,74 +5174,261 @@ const styles = `
   }
 
   .calendar-day {
-    aspect-ratio: 1;
+    min-height: 52px;
     background: var(--bg-secondary);
     border-radius: 10px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 4px;
+    justify-content: space-between;
+    padding: 4px 2px;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.15s;
   }
 
-  .calendar-day.empty { background: transparent; }
-  .calendar-day.today { border: 2px solid var(--accent); }
-  .calendar-day.has-subs { background: var(--bg-tertiary); cursor: pointer; }
-  .calendar-day.has-subs:active { transform: scale(0.95); }
-  .calendar-day.selected { background: var(--accent); color: white; }
+  .calendar-day:active { transform: scale(0.95); }
+  .calendar-day.empty { background: transparent; cursor: default; }
+  .calendar-day.empty:active { transform: none; }
 
-  .day-number { font-size: 0.8125rem; font-weight: 600; }
-  .day-subs { display: flex; gap: 2px; margin-top: 2px; }
-  .day-sub-dot { width: 5px; height: 5px; border-radius: 50%; }
-
-  .day-details {
-    background: var(--bg-secondary);
-    border-radius: 14px;
-    padding: 14px;
-    margin-top: 16px;
-    animation: fadeIn 0.2s ease;
+  .calendar-day.today {
+    box-shadow: inset 0 0 0 2px var(--accent), 0 0 12px rgba(99, 102, 241, 0.3);
   }
 
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+  .calendar-day.has-subs { cursor: pointer; }
 
-  .day-details-header {
+  .day-logo-container {
+    flex: 1;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
+    min-height: 24px;
+  }
+
+  .day-logos-pair {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .day-count-badge {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .day-number {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    line-height: 1;
+  }
+
+  .calendar-day.today .day-number { color: var(--accent); font-weight: 700; }
+
+  /* Calendar add button */
+  .calendar-add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px;
+    margin-top: 16px;
+    border: none;
+    border-radius: 14px;
+    background: var(--accent);
+    color: white;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s;
+    font-family: inherit;
+  }
+
+  .calendar-add-btn:active { transform: scale(0.98); }
+
+  /* Bottom Sheet */
+  .day-bottom-sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 900;
+    animation: sheetOverlayIn 0.3s ease;
+  }
+
+  .day-bottom-sheet-overlay.closing {
+    animation: sheetOverlayOut 0.25s ease forwards;
+  }
+
+  @keyframes sheetOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes sheetOverlayOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  .day-bottom-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-secondary);
+    border-radius: 20px 20px 0 0;
+    padding: 12px 16px;
+    padding-bottom: calc(16px + var(--tg-safe-area-bottom));
+    z-index: 950;
+    max-height: 70vh;
+    overflow-y: auto;
+    animation: sheetSlideUp 0.3s ease-out;
+  }
+
+  .day-bottom-sheet.closing {
+    animation: sheetSlideDown 0.25s ease forwards;
+  }
+
+  @keyframes sheetSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  @keyframes sheetSlideDown {
+    from { transform: translateY(0); }
+    to { transform: translateY(100%); }
+  }
+
+  .sheet-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+
+  .sheet-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
     margin-bottom: 14px;
   }
 
-  .day-details-header h4 { font-size: 0.9375rem; font-weight: 700; text-transform: capitalize; }
+  .sheet-header h4 {
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
 
-  .close-details {
-    width: 28px;
-    height: 28px;
-    border: none;
+  .sheet-date {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    text-transform: capitalize;
+  }
+
+  .sheet-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .sheet-subscription-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
     background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border-radius: 8px;
+    border-radius: 12px;
     cursor: pointer;
+    transition: transform 0.15s;
+  }
+
+  .sheet-subscription-item:active { transform: scale(0.98); }
+
+  .sheet-sub-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sheet-sub-name {
+    font-weight: 600;
+    font-size: 0.9375rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sheet-sub-cycle {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+
+  .sheet-sub-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .sheet-sub-amount {
+    font-weight: 700;
+    font-size: 0.9375rem;
+  }
+
+  .sheet-chevron {
+    color: var(--text-secondary);
+  }
+
+  .sheet-add-btn {
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 12px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 12px;
+    font-family: inherit;
+    transition: all 0.2s;
   }
 
-  .day-details-list { display: flex; flex-direction: column; gap: 10px; }
+  .sheet-add-btn:active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 
-  .day-detail-item {
+  .sheet-total {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px;
+    justify-content: space-between;
+    padding: 12px 14px;
     background: var(--bg-tertiary);
-    border-radius: 10px;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 600;
   }
 
-  .detail-info { flex: 1; min-width: 0; }
-  .detail-name { display: block; font-weight: 600; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .detail-category { font-size: 0.6875rem; color: var(--text-secondary); }
-  .detail-amount { font-weight: 700; font-size: 0.875rem; flex-shrink: 0; }
+  .sheet-total-amount {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
 `;
