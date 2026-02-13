@@ -817,6 +817,7 @@ const SubscriptionForm = ({ onClose, onSave, onDelete, editData, templates, isLo
     ...editData,
     firstBillingDate: (editData.next_billing_date || editData.first_billing_date || editData.firstBillingDate || '').split('T')[0],
     billingCycle: editData.billing_cycle || editData.billingCycle || 'monthly',
+    trialEndDate: (editData.trial_end_date || editData.trialEndDate || '').split('T')[0] || '',
     category: editData.category || 'Другое',
     notifyEnabled: editData.notify_enabled ?? true,
   } : {
@@ -825,6 +826,7 @@ const SubscriptionForm = ({ onClose, onSave, onDelete, editData, templates, isLo
     currency: 'RUB',
     billingCycle: 'monthly',
     firstBillingDate: preselectedDate || getLocalDateString(),
+    trialEndDate: '',
     category: 'Другое',
     color: '#6366f1',
     icon: '📦',
@@ -864,9 +866,10 @@ const SubscriptionForm = ({ onClose, onSave, onDelete, editData, templates, isLo
       ...formData,
       id: editData?.id,
       amount: parseFloat(formData.amount),
-      next_billing_date: formData.firstBillingDate,
+      next_billing_date: formData.billingCycle === 'trial' && formData.trialEndDate ? formData.trialEndDate : formData.firstBillingDate,
       first_billing_date: formData.firstBillingDate,
       billing_cycle: formData.billingCycle,
+      trial_end_date: formData.billingCycle === 'trial' ? formData.trialEndDate : null,
       notify_enabled: formData.notifyEnabled,
     });
   };
@@ -1003,6 +1006,22 @@ const SubscriptionForm = ({ onClose, onSave, onDelete, editData, templates, isLo
                   onChange={e => setFormData({ ...formData, firstBillingDate: e.target.value })}
                 />
               </div>
+
+              {formData.billingCycle === 'trial' && (
+                <>
+                  <div className="settings-row-divider" />
+                  <div className="settings-row trial-end-row">
+                    <span className="settings-row-label">Дата окончания</span>
+                    <input
+                      type="date"
+                      className="settings-date-input"
+                      value={formData.trialEndDate}
+                      min={formData.firstBillingDate}
+                      onChange={e => setFormData({ ...formData, trialEndDate: e.target.value })}
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Card 2: Amount */}
@@ -1925,7 +1944,7 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
   useEffect(() => {
     if (prevIsCurrentRef.current !== isCurrentMonth) {
       setBtnAnimating(true);
-      const t = setTimeout(() => setBtnAnimating(false), 350);
+      const t = setTimeout(() => setBtnAnimating(false), 550);
       prevIsCurrentRef.current = isCurrentMonth;
       return () => clearTimeout(t);
     }
@@ -1946,8 +1965,14 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const dayDate = new Date(year, month, day);
       const daySubs = subscriptions.filter(sub => {
-        const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
         const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
+        // For trial subs, show on trial_end_date only
+        if (cycle === 'trial') {
+          const endDate = parseLocalDate(sub.trial_end_date || sub.trialEndDate);
+          if (!endDate) return false;
+          return endDate.getFullYear() === year && endDate.getMonth() === month && endDate.getDate() === day;
+        }
+        const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
         const billingDates = getBillingDatesInMonth(startDate, cycle, year, month);
         return billingDates.some(d => d.getDate() === day);
       });
@@ -2481,21 +2506,27 @@ export default function SubfyApp() {
     };
   }, [subscriptions]);
 
+  // Check if a sub bills in a given month (handles trial_end_date)
+  const subBillsInMonth = useCallback((sub, year, month) => {
+    const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
+    if (cycle === 'trial') {
+      const endDate = parseLocalDate(sub.trial_end_date || sub.trialEndDate);
+      return endDate && endDate.getFullYear() === year && endDate.getMonth() === month;
+    }
+    const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
+    return getBillingDatesInMonth(startDate, cycle, year, month).length > 0;
+  }, []);
+
   // Month-specific total for hero amount (based on calendar month)
   const calendarMonthTotal = useMemo(() => {
     const year = calendarMonth.getFullYear();
     const month = calendarMonth.getMonth();
     return Math.round(subscriptions.reduce((total, sub) => {
-      const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
-      const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
-      const dates = getBillingDatesInMonth(startDate, cycle, year, month);
-      if (dates.length > 0) {
-        const currency = CURRENCIES.find(c => c.code === sub.currency) || CURRENCIES[0];
-        return total + (sub.amount * currency.rate * dates.length);
-      }
-      return total;
+      if (!subBillsInMonth(sub, year, month)) return total;
+      const currency = CURRENCIES.find(c => c.code === sub.currency) || CURRENCIES[0];
+      return total + (sub.amount * currency.rate);
     }, 0));
-  }, [subscriptions, calendarMonth]);
+  }, [subscriptions, calendarMonth, subBillsInMonth]);
 
   // Non-monthly subscriptions billing in current calendar month
   const extraSubs = useMemo(() => {
@@ -2504,11 +2535,9 @@ export default function SubfyApp() {
     return subscriptions.filter(sub => {
       const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
       if (cycle === 'monthly') return false;
-      const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
-      const dates = getBillingDatesInMonth(startDate, cycle, year, month);
-      return dates.length > 0;
+      return subBillsInMonth(sub, year, month);
     });
-  }, [subscriptions, calendarMonth]);
+  }, [subscriptions, calendarMonth, subBillsInMonth]);
 
   // Ближайшие списания
   const upcomingBillings = useMemo(() => {
@@ -4422,6 +4451,10 @@ const styles = `
     cursor: pointer;
   }
 
+  .trial-end-row {
+    animation: drumRoll 0.3s ease;
+  }
+
   .settings-card-expand {
     padding: 8px 16px 16px;
   }
@@ -5633,7 +5666,13 @@ const styles = `
   .calendar-add-btn:active { transform: scale(0.98); }
 
   .calendar-add-btn.drum-in {
-    animation: drumRoll 0.35s ease;
+    animation: btnSwap 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes btnSwap {
+    0% { opacity: 0; transform: translateY(20px) scale(0.95); }
+    60% { opacity: 1; }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
   }
 
   .calendar-return-btn {
