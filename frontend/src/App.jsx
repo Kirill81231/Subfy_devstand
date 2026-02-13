@@ -1913,8 +1913,7 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
 // ============================================
 // КОМПОНЕНТ: КАЛЕНДАРЬ
 // ============================================
-const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscription }) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscription, currentMonth, onChangeMonth }) => {
   const [selectedDay, setSelectedDay] = useState(null);
   const [sheetClosing, setSheetClosing] = useState(false);
 
@@ -1952,25 +1951,10 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
   const days = getDaysInMonth(currentMonth);
   const monthName = currentMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 
-  const monthlyTotal = useMemo(() => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    return subscriptions.reduce((total, sub) => {
-      const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
-      const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
-      const dates = getBillingDatesInMonth(startDate, cycle, year, month);
-      if (dates.length > 0) {
-        const currency = currencies.find(c => c.code === sub.currency) || currencies[0];
-        return total + (sub.amount * currency.rate * dates.length);
-      }
-      return total;
-    }, 0);
-  }, [subscriptions, currentMonth, currencies]);
-
   const changeMonth = (delta) => {
     const newDate = new Date(currentMonth);
     newDate.setMonth(newDate.getMonth() + delta);
-    setCurrentMonth(newDate);
+    onChangeMonth(newDate);
     closeSheet();
   };
 
@@ -2012,7 +1996,6 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
         <button onClick={() => changeMonth(-1)}><ChevronLeft size={20} /></button>
         <div className="calendar-title">
           <h3>{monthName}</h3>
-          <span className="month-total">{Math.round(monthlyTotal).toLocaleString('ru-RU')} ₽</span>
         </div>
         <button onClick={() => changeMonth(1)}><ChevronRight size={20} /></button>
       </div>
@@ -2113,6 +2096,14 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
 };
 
 // ============================================
+// КОМПОНЕНТ: АНИМИРОВАННАЯ СУММА
+// ============================================
+const HeroAmount = ({ value }) => {
+  const animatedVal = useAnimatedValue(value, 500);
+  return <span className="hero-amount-text">₽ {animatedVal.toLocaleString('ru-RU')}</span>;
+};
+
+// ============================================
 // ГЛАВНЫЙ КОМПОНЕНТ
 // ============================================
 export default function SubfyApp() {
@@ -2126,6 +2117,8 @@ export default function SubfyApp() {
   });
   const [activeTab, setActiveTab] = useState('calendar');
   const [preselectedDate, setPreselectedDate] = useState(null);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [extraSheetSubs, setExtraSheetSubs] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingSubscription, setEditingSubscription] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
@@ -2467,6 +2460,35 @@ export default function SubfyApp() {
     };
   }, [subscriptions]);
 
+  // Month-specific total for hero amount (based on calendar month)
+  const calendarMonthTotal = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    return Math.round(subscriptions.reduce((total, sub) => {
+      const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
+      const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
+      const dates = getBillingDatesInMonth(startDate, cycle, year, month);
+      if (dates.length > 0) {
+        const currency = CURRENCIES.find(c => c.code === sub.currency) || CURRENCIES[0];
+        return total + (sub.amount * currency.rate * dates.length);
+      }
+      return total;
+    }, 0));
+  }, [subscriptions, calendarMonth]);
+
+  // Non-monthly subscriptions billing in current calendar month
+  const extraSubs = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    return subscriptions.filter(sub => {
+      const cycle = sub.billing_cycle || sub.billingCycle || 'monthly';
+      if (cycle === 'monthly') return false;
+      const startDate = sub.first_billing_date || sub.next_billing_date || sub.firstBillingDate;
+      const dates = getBillingDatesInMonth(startDate, cycle, year, month);
+      return dates.length > 0;
+    });
+  }, [subscriptions, calendarMonth]);
+
   // Ближайшие списания
   const upcomingBillings = useMemo(() => {
     return subscriptions
@@ -2551,9 +2573,66 @@ export default function SubfyApp() {
       {/* Hero Amount */}
       <div className="hero-amount">
         <div className="hero-amount-glow" />
-        <span className="hero-amount-text">₽ {stats.monthly.toLocaleString('ru-RU')}</span>
-        <span className="hero-badge">В месяц</span>
+        <HeroAmount value={calendarMonthTotal} />
+        {extraSubs.length > 0 ? (
+          <div className="hero-extra-row">
+            <button className="hero-extra-badge" onClick={() => {
+              setExtraSheetSubs(extraSubs);
+            }}>
+              <div className="hero-extra-dot" style={{ background: (CATEGORIES.find(c => c.name === extraSubs[0].category)?.color) || '#6B7280' }} />
+              <span className="hero-extra-name">{extraSubs[0].name}</span>
+              <span className="hero-extra-sep">·</span>
+              <span className="hero-extra-amount">{extraSubs[0].amount.toLocaleString('ru-RU')} {(CURRENCIES.find(c => c.code === extraSubs[0].currency) || CURRENCIES[0]).symbol}</span>
+            </button>
+            {extraSubs.length > 1 && (
+              <button className="hero-extra-more" onClick={() => setExtraSheetSubs(extraSubs)}>
+                +{extraSubs.length - 1}
+              </button>
+            )}
+          </div>
+        ) : (
+          <span className="hero-badge">В месяц</span>
+        )}
       </div>
+
+      {/* Extra subs bottom sheet */}
+      {extraSheetSubs && (
+        <>
+          <div className="day-bottom-sheet-overlay" onClick={() => setExtraSheetSubs(null)} />
+          <div className="day-bottom-sheet">
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <h4>Дополнительные платежи</h4>
+            </div>
+            <div className="sheet-list">
+              {extraSheetSubs.map(sub => {
+                const currency = CURRENCIES.find(c => c.code === sub.currency) || CURRENCIES[0];
+                const cycle = BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
+                return (
+                  <div key={sub.id} className="sheet-subscription-item" onClick={() => { setExtraSheetSubs(null); setEditingSubscription(sub); setShowForm(true); }}>
+                    <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={40} logoUrl={sub.logo_url} />
+                    <div className="sheet-sub-info">
+                      <span className="sheet-sub-name">{sub.name}</span>
+                      <span className="sheet-sub-cycle">{cycle?.label || 'Ежемесячно'}</span>
+                    </div>
+                    <div className="sheet-sub-right">
+                      <span className="sheet-sub-amount">{sub.amount.toLocaleString('ru-RU')} {currency.symbol}</span>
+                      <ChevronRight size={16} className="sheet-chevron" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="sheet-total">
+              <span>Итого</span>
+              <span className="sheet-total-amount">{Math.round(extraSheetSubs.reduce((s, sub) => {
+                const currency = CURRENCIES.find(c => c.code === sub.currency) || CURRENCIES[0];
+                return s + sub.amount * currency.rate;
+              }, 0)).toLocaleString('ru-RU')} ₽</span>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Tabs */}
       <div className="view-tabs">
@@ -2655,6 +2734,8 @@ export default function SubfyApp() {
           <CalendarView
             subscriptions={subscriptions}
             currencies={CURRENCIES}
+            currentMonth={calendarMonth}
+            onChangeMonth={setCalendarMonth}
             onOpenForm={(date) => {
               setPreselectedDate(date);
               setEditingSubscription(null);
@@ -2993,6 +3074,76 @@ const styles = `
     position: relative;
     z-index: 1;
   }
+
+  .hero-extra-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    position: relative;
+    z-index: 1;
+    animation: drumRoll 0.3s ease;
+  }
+
+  .hero-extra-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 20px;
+    background: var(--bg-tertiary);
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.15s;
+    white-space: nowrap;
+    max-width: 260px;
+    overflow: hidden;
+  }
+
+  .hero-extra-badge:active { transform: scale(0.97); }
+
+  .hero-extra-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .hero-extra-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .hero-extra-sep {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .hero-extra-amount {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .hero-extra-more {
+    padding: 5px 10px;
+    border-radius: 20px;
+    background: var(--bg-tertiary);
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+
+  .hero-extra-more:active { transform: scale(0.95); }
 
   /* Tabs */
   .view-tabs {
@@ -4787,32 +4938,32 @@ const styles = `
 
   .analytics-halfsheet {
     position: fixed;
-    top: 0;
+    bottom: 0;
     left: 0;
     right: 0;
     height: 55vh;
     background: var(--bg-secondary);
-    border-radius: 0 0 24px 24px;
+    border-radius: 24px 24px 0 0;
     z-index: 900;
     display: flex;
     flex-direction: column;
-    padding-top: calc(var(--tg-safe-area-top) + var(--tg-content-safe-area-top));
-    animation: analyticsSlideDown 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    padding-bottom: calc(var(--tg-safe-area-bottom));
+    animation: analyticsSlideUp 0.35s cubic-bezier(0.32, 0.72, 0, 1);
     overflow: hidden;
   }
 
   .analytics-halfsheet.closing {
-    animation: analyticsSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
-  }
-
-  @keyframes analyticsSlideDown {
-    from { transform: translateY(-100%); }
-    to { transform: translateY(0); }
+    animation: analyticsSlideDown 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
   }
 
   @keyframes analyticsSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  @keyframes analyticsSlideDown {
     from { transform: translateY(0); }
-    to { transform: translateY(-100%); }
+    to { transform: translateY(100%); }
   }
 
   .analytics-sheet-header {
@@ -5358,7 +5509,7 @@ const styles = `
 
   .calendar-title { text-align: center; }
   .calendar-title h3 { font-size: 1rem; font-weight: 700; text-transform: capitalize; }
-  .month-total { font-size: 0.8125rem; color: var(--accent); font-weight: 600; }
+
 
   .calendar-weekdays {
     display: grid;
