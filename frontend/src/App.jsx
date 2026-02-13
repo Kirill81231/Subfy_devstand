@@ -187,6 +187,13 @@ const getBillingDatesInMonth = (startDate, cycle, year, month) => {
 
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
+
+  // One-time and trial: only match if the date falls in this month
+  if (cycle === 'one-time' || cycle === 'trial') {
+    if (date >= monthStart && date <= monthEnd) return [new Date(date)];
+    return [];
+  }
+
   const dates = [];
 
   const advance = (d, c) => {
@@ -197,7 +204,6 @@ const getBillingDatesInMonth = (startDate, cycle, year, month) => {
       case 'quarterly': d.setMonth(d.getMonth() + 3); break;
       case 'semiannual': d.setMonth(d.getMonth() + 6); break;
       case 'yearly': d.setFullYear(d.getFullYear() + 1); break;
-      case 'one-time': case 'trial': return;
       default: d.setMonth(d.getMonth() + 1);
     }
   };
@@ -558,7 +564,8 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
   const currency = currencies.find(c => c.code === subscription.currency) || currencies[0];
   const billingCycle = subscription.billing_cycle || subscription.billingCycle || 'monthly';
   const firstDate = subscription.first_billing_date || subscription.next_billing_date || subscription.firstBillingDate;
-  const nextDate = calculateNextBillingDate(firstDate, billingCycle);
+  const trialEnd = subscription.trial_end_date || subscription.trialEndDate;
+  const nextDate = billingCycle === 'trial' && trialEnd ? parseLocalDate(trialEnd) : calculateNextBillingDate(firstDate, billingCycle);
   const daysUntil = getDaysUntil(nextDate);
   const cycle = BILLING_CYCLES.find(c => c.value === billingCycle) || BILLING_CYCLES[0];
   
@@ -631,9 +638,9 @@ const SubscriptionCard = ({ subscription, onEdit, onDelete, currencies }) => {
               <div className="sub-info">
                 <h3 className="sub-name">{subscription.name}</h3>
                 <div className="sub-price-inline">
-                  <span className="price-amount">{Math.round(monthlyAmount).toLocaleString('ru-RU')}</span>
+                  <span className="price-amount">{(billingCycle === 'trial' || billingCycle === 'one-time' ? subscription.amount : Math.round(monthlyAmount)).toLocaleString('ru-RU')}</span>
                   <span className="price-currency">{currency.symbol}</span>
-                  <span className="price-cycle">/ мес</span>
+                  <span className="price-cycle">/ {cycle.short}</span>
                 </div>
               </div>
               <button className="sub-edit-btn" onClick={(e) => { e.stopPropagation(); onEdit(subscription); }}>
