@@ -1196,30 +1196,60 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
 // ============================================
 // КОМПОНЕНТ: ЭКРАН АНАЛИТИКИ
 // ============================================
+// Animated counter hook
+const useAnimatedValue = (target, duration = 400) => {
+  const [display, setDisplay] = useState(target);
+  const rafRef = useRef(null);
+  useEffect(() => {
+    const start = display;
+    const diff = target - start;
+    if (diff === 0) return;
+    const startTime = performance.now();
+    const animate = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(start + diff * eased));
+      if (progress < 1) rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target]);
+  return display;
+};
+
 const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
   const [isClosing, setIsClosing] = useState(false);
-  const [period, setPeriod] = useState('month');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [rotation, setRotation] = useState(0);
+  const [prevCategoryName, setPrevCategoryName] = useState('');
+  const [nameAnimating, setNameAnimating] = useState(false);
+  const isDragging = useRef(false);
+  const dragStartAngle = useRef(0);
+  const dragStartRotation = useRef(0);
+  const ringRef = useRef(null);
+  const velocityRef = useRef(0);
+  const lastAngleRef = useRef(0);
+  const lastTimeRef = useRef(0);
+  const momentumRef = useRef(null);
 
   const handleClose = () => {
     setIsClosing(true);
     setTimeout(() => onClose(), 280);
   };
-  
+
   const stats = useMemo(() => {
     let monthlyTotal = 0;
     const categoryTotals = {};
-    
     subscriptions.forEach(sub => {
       const cycle = BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
       const currency = CURRENCIES.find(c => c.code === sub.currency);
       const amountInRub = sub.amount * (currency?.rate || 1);
       const monthly = amountInRub * (cycle?.multiplier || 1);
       monthlyTotal += monthly;
-      
       const cat = sub.category || 'Другое';
       categoryTotals[cat] = (categoryTotals[cat] || 0) + monthly;
     });
-
     return {
       monthly: Math.round(monthlyTotal),
       yearly: Math.round(monthlyTotal * 12),
@@ -1228,56 +1258,145 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
     };
   }, [subscriptions]);
 
-  // Топ-5 самых дорогих подписок по годовой стоимости
-  const topSubscriptions = useMemo(() => {
-    return subscriptions
-      .map(sub => {
-        const cycle = BILLING_CYCLES.find(c => c.value === (sub.billing_cycle || sub.billingCycle));
-        const currency = CURRENCIES.find(c => c.code === sub.currency);
-        const amountInRub = sub.amount * (currency?.rate || 1);
-        const monthly = amountInRub * (cycle?.multiplier || 1);
-        return { ...sub, monthlyRub: monthly, yearlyRub: monthly * 12 };
-      })
-      .sort((a, b) => b.yearlyRub - a.yearlyRub)
-      .slice(0, 5);
-  }, [subscriptions]);
+  const categoryData = useMemo(() => {
+    const data = Object.entries(stats.categories).map(([name, value]) => ({
+      name,
+      value: Math.round(value),
+      color: CATEGORIES.find(c => c.name === name)?.color || '#6B7280',
+      percent: stats.monthly > 0 ? Math.round((value / stats.monthly) * 100) : 0,
+    })).sort((a, b) => b.value - a.value);
+    return data;
+  }, [stats]);
 
-  // Данные для графика
-  const chartData = useMemo(() => {
-    if (period === 'year') {
-      const months = [];
-      for (let i = 0; i < 12; i++) {
-        const date = new Date();
-        date.setMonth(date.getMonth() - 11 + i);
-        months.push({
-          label: date.toLocaleDateString('ru-RU', { month: 'short' }),
-          value: stats.monthly, // Упрощённо - одинаковая сумма
-        });
-      }
-      return months;
-    } else {
-      const days = [];
-      for (let i = 0; i < 30; i++) {
-        const date = new Date();
-        date.setDate(date.getDate() - 29 + i);
-        days.push({
-          label: date.getDate().toString(),
-          value: i % 7 === 0 ? stats.monthly / 4 : 0, // Упрощённо
-        });
-      }
-      return days;
+  // Build arc segments
+  const segments = useMemo(() => {
+    if (categoryData.length === 0) return [];
+    const gap = 3; // degrees gap between segments
+    const totalGap = gap * categoryData.length;
+    const available = 360 - totalGap;
+    let offset = 0;
+    return categoryData.map((cat) => {
+      const sweep = Math.max((cat.percent / 100) * available, 8); // min 8deg
+      const seg = { ...cat, startAngle: offset, sweepAngle: sweep };
+      offset += sweep + gap;
+      return seg;
+    });
+  }, [categoryData]);
+
+  // Determine which segment the pointer (top, 270deg in SVG coords) hits
+  const getActiveSegment = useCallback((rot) => {
+    if (segments.length === 0) return 0;
+    // Pointer is at top (270deg SVG). We need to find which segment the pointer is on
+    // considering the current rotation offset
+    const pointerAngle = ((270 - rot) % 360 + 360) % 360;
+    for (let i = 0; i < segments.length; i++) {
+      const s = segments[i];
+      const end = s.startAngle + s.sweepAngle;
+      if (pointerAngle >= s.startAngle && pointerAngle < end) return i;
     }
-  }, [period, stats.monthly]);
+    // If not in any segment (in a gap), find closest
+    let minDist = Infinity, closest = 0;
+    segments.forEach((s, i) => {
+      const mid = s.startAngle + s.sweepAngle / 2;
+      const dist = Math.abs(((pointerAngle - mid + 180) % 360) - 180);
+      if (dist < minDist) { minDist = dist; closest = i; }
+    });
+    return closest;
+  }, [segments]);
 
-  const maxChartValue = Math.max(...chartData.map(d => d.value), 1);
+  // Update active segment when rotation changes
+  useEffect(() => {
+    const newIdx = getActiveSegment(rotation);
+    if (newIdx !== activeIndex) {
+      setPrevCategoryName(categoryData[activeIndex]?.name || '');
+      setActiveIndex(newIdx);
+      setNameAnimating(true);
+      setTimeout(() => setNameAnimating(false), 300);
+    }
+  }, [rotation, getActiveSegment]);
 
-  // Категории для диаграммы
-  const categoryData = Object.entries(stats.categories).map(([name, value]) => ({
-    name,
-    value: Math.round(value),
-    color: CATEGORIES.find(c => c.name === name)?.color || '#6B7280',
-    percent: Math.round((value / stats.monthly) * 100) || 0,
-  })).sort((a, b) => b.value - a.value);
+  // Touch handlers for ring rotation
+  const getAngleFromEvent = (e, rect) => {
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return Math.atan2(clientY - cy, clientX - cx) * (180 / Math.PI);
+  };
+
+  const handleDragStart = (e) => {
+    if (!ringRef.current) return;
+    cancelAnimationFrame(momentumRef.current);
+    isDragging.current = true;
+    const rect = ringRef.current.getBoundingClientRect();
+    dragStartAngle.current = getAngleFromEvent(e, rect);
+    dragStartRotation.current = rotation;
+    velocityRef.current = 0;
+    lastAngleRef.current = dragStartAngle.current;
+    lastTimeRef.current = performance.now();
+  };
+
+  const handleDragMove = (e) => {
+    if (!isDragging.current || !ringRef.current) return;
+    e.preventDefault();
+    const rect = ringRef.current.getBoundingClientRect();
+    const currentAngle = getAngleFromEvent(e, rect);
+    const diff = currentAngle - dragStartAngle.current;
+    const now = performance.now();
+    const dt = now - lastTimeRef.current;
+    if (dt > 0) {
+      velocityRef.current = (currentAngle - lastAngleRef.current) / dt;
+    }
+    lastAngleRef.current = currentAngle;
+    lastTimeRef.current = now;
+    setRotation(dragStartRotation.current + diff);
+  };
+
+  const handleDragEnd = () => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    // Apply momentum
+    let vel = velocityRef.current * 16; // scale up
+    const decelerate = () => {
+      if (Math.abs(vel) < 0.1) return;
+      vel *= 0.95;
+      setRotation(prev => prev + vel);
+      momentumRef.current = requestAnimationFrame(decelerate);
+    };
+    momentumRef.current = requestAnimationFrame(decelerate);
+  };
+
+  useEffect(() => {
+    const el = ringRef.current;
+    if (!el) return;
+    const opts = { passive: false };
+    const onTouchMove = (e) => handleDragMove(e);
+    el.addEventListener('touchmove', onTouchMove, opts);
+    return () => el.removeEventListener('touchmove', onTouchMove, opts);
+  }, [rotation]);
+
+  const activeCat = categoryData[activeIndex] || { name: '-', value: 0, percent: 0, color: '#666' };
+  const animatedValue = useAnimatedValue(activeCat.value);
+  const animatedPercent = useAnimatedValue(activeCat.percent);
+
+  // SVG ring helpers
+  const ringSize = 240;
+  const center = ringSize / 2;
+  const radius = 95;
+  const strokeWidth = 22;
+  const bgRadius = radius;
+
+  const polarToCartesian = (cx, cy, r, angleDeg) => {
+    const rad = (angleDeg * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  };
+
+  const describeArc = (cx, cy, r, startAngle, endAngle) => {
+    const start = polarToCartesian(cx, cy, r, startAngle);
+    const end = polarToCartesian(cx, cy, r, endAngle);
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
+  };
 
   return (
     <div className={`analytics-screen screen-enter ${isClosing ? 'screen-exit' : ''}`}>
@@ -1285,106 +1404,115 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
         <button className="back-btn" onClick={handleClose}>
           <ArrowLeft size={20} />
         </button>
-        <h2>Аналитика подписок</h2>
+        <h2>Аналитика</h2>
         <div style={{ width: 32 }} />
       </div>
 
       <div className="analytics-content">
-        {/* Сводка */}
-        <div className="analytics-summary">
-          <div className="summary-item">
-            <span className="summary-value">{stats.monthly.toLocaleString('ru-RU')} ₽</span>
-            <span className="summary-label">в месяц</span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-value">{stats.yearly.toLocaleString('ru-RU')} ₽</span>
-            <span className="summary-label">в год</span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-value">{stats.count}</span>
-            <span className="summary-label">подписок</span>
-          </div>
+        <div className="ring-sub-count">
+          У вас <span>{stats.count}</span> {stats.count === 1 ? 'подписка' : stats.count < 5 ? 'подписки' : 'подписок'}
         </div>
 
-        {/* Переключатель периода */}
-        <div className="period-tabs">
-          <button 
-            className={`period-tab ${period === 'month' ? 'active' : ''}`}
-            onClick={() => setPeriod('month')}
+        {/* Ring Chart */}
+        <div className="ring-container">
+          {/* Pointer arrow at top */}
+          <div className="ring-pointer">▼</div>
+
+          <svg
+            ref={ringRef}
+            width={ringSize}
+            height={ringSize}
+            viewBox={`0 0 ${ringSize} ${ringSize}`}
+            className="ring-svg"
+            onTouchStart={handleDragStart}
+            onTouchEnd={handleDragEnd}
+            onMouseDown={handleDragStart}
+            onMouseMove={handleDragMove}
+            onMouseUp={handleDragEnd}
+            onMouseLeave={handleDragEnd}
           >
-            Месяц
-          </button>
-          <button 
-            className={`period-tab ${period === 'year' ? 'active' : ''}`}
-            onClick={() => setPeriod('year')}
-          >
-            Год
-          </button>
-        </div>
+            {/* Background track */}
+            <circle
+              cx={center} cy={center} r={bgRadius}
+              fill="none"
+              stroke="var(--bg-tertiary)"
+              strokeWidth={strokeWidth}
+              opacity="0.5"
+            />
 
-        {/* График */}
-        <div className="chart-section">
-          <h3><TrendingUp size={18} /> Динамика расходов</h3>
-          <div className="bar-chart">
-            {chartData.map((item, idx) => (
-              <div key={idx} className="bar-item">
-                <div 
-                  className="bar" 
-                  style={{ height: `${(item.value / maxChartValue) * 100}%` }}
-                />
-                {(period === 'year' || idx % 5 === 0) && (
-                  <span className="bar-label">{item.label}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+            {/* Category segments */}
+            <g style={{ transform: `rotate(${rotation}deg)`, transformOrigin: 'center', transition: isDragging.current ? 'none' : 'transform 0.1s ease-out' }}>
+              {segments.map((seg, i) => {
+                const isActive = i === activeIndex;
+                const path = describeArc(center, center, radius, seg.startAngle, seg.startAngle + seg.sweepAngle);
+                return (
+                  <g key={seg.name}>
+                    {isActive && (
+                      <path
+                        d={path}
+                        fill="none"
+                        stroke={seg.color}
+                        strokeWidth={strokeWidth + 8}
+                        strokeLinecap="round"
+                        opacity="0.25"
+                        filter="url(#glow)"
+                      />
+                    )}
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke={isActive ? seg.color : seg.color + '66'}
+                      strokeWidth={isActive ? strokeWidth + 2 : strokeWidth}
+                      strokeLinecap="round"
+                    />
+                    {/* Small dot at segment start */}
+                    {isActive && (() => {
+                      const mid = polarToCartesian(center, center, radius, seg.startAngle + seg.sweepAngle / 2);
+                      return <circle cx={mid.x} cy={mid.y} r={5} fill={seg.color} />;
+                    })()}
+                  </g>
+                );
+              })}
+            </g>
 
-        {/* Диаграмма категорий */}
-        <div className="categories-section">
-          <h3><PieChart size={18} /> Расходы по категориям</h3>
-          <div className="categories-chart">
-            <div className="pie-chart">
-              {categoryData.map((cat, idx) => (
-                <div 
-                  key={cat.name}
-                  className="pie-segment"
-                  style={{
-                    '--color': cat.color,
-                    '--percent': cat.percent,
-                    '--offset': categoryData.slice(0, idx).reduce((sum, c) => sum + c.percent, 0),
-                  }}
-                />
-              ))}
+            {/* Glow filter */}
+            <defs>
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="6" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+          </svg>
+
+          {/* Center text */}
+          <div className="ring-center-text">
+            <div className={`ring-cat-name ${nameAnimating ? 'animating' : ''}`}>
+              {activeCat.name}
             </div>
-            <div className="categories-list">
-              {categoryData.map(cat => (
-                <div key={cat.name} className="category-item">
-                  <div className="category-dot" style={{ background: cat.color }} />
-                  <span className="category-name">{cat.name}</span>
-                  <span className="category-value">{cat.value.toLocaleString('ru-RU')} ₽</span>
-                  <span className="category-percent">{cat.percent}%</span>
-                </div>
-              ))}
+            <div className="ring-cat-details">
+              {animatedValue.toLocaleString('ru-RU')} ₽ · {animatedPercent}%
             </div>
           </div>
+
+          {/* Glow behind ring */}
+          <div
+            className="ring-glow-bg"
+            style={{ background: `radial-gradient(circle, ${activeCat.color}33 0%, transparent 70%)` }}
+          />
         </div>
 
-        {/* Топ подписок */}
-        <div className="top-section">
-          <h3>💰 Самые дорогие подписки</h3>
-          <div className="top-list">
-            {topSubscriptions.map((sub, idx) => (
-              <div key={sub.id} className="top-item">
-                <span className="top-rank">{idx + 1}</span>
-                <Logo domain={sub.domain} emoji={sub.icon} color={sub.color} size={36} logoUrl={sub.logo_url} />
-                <div className="top-info">
-                  <span className="top-name">{sub.name}</span>
-                  <span className="top-monthly">{Math.round(sub.monthlyRub).toLocaleString('ru-RU')} ₽/мес</span>
-                </div>
-                <span className="top-yearly">{Math.round(sub.yearlyRub).toLocaleString('ru-RU')} ₽/год</span>
-              </div>
-            ))}
+        {/* Bottom cards */}
+        <div className="analytics-cards">
+          <div className="analytics-card">
+            <span className="analytics-card-label">Годовой<br/>прогноз</span>
+            <span className="analytics-card-value">{stats.yearly.toLocaleString('ru-RU')} ₽</span>
+          </div>
+          <div className="analytics-card">
+            <span className="analytics-card-label">Средняя цена<br/>в месяц</span>
+            <span className="analytics-card-value">{stats.monthly.toLocaleString('ru-RU')} ₽</span>
           </div>
         </div>
       </div>
@@ -4829,140 +4957,122 @@ const styles = `
     cursor: pointer;
   }
 
-  .analytics-summary {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-
-  .summary-item {
-    background: var(--bg-secondary);
-    border-radius: 14px;
-    padding: 14px 10px;
+  /* Ring Analytics */
+  .ring-sub-count {
     text-align: center;
-  }
-
-  .summary-value { display: block; font-size: 1.125rem; font-weight: 800; }
-  .summary-label { font-size: 0.6875rem; color: var(--text-secondary); }
-
-  .period-tabs {
-    display: flex;
-    background: var(--bg-secondary);
-    padding: 4px;
-    border-radius: 10px;
-    margin-bottom: 20px;
-  }
-
-  .period-tab {
-    flex: 1;
-    padding: 10px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-    font-weight: 600;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-
-  .period-tab.active { background: var(--accent); color: white; }
-
-  .chart-section, .categories-section, .top-section {
-    background: var(--bg-secondary);
-    border-radius: 14px;
-    padding: 16px;
-    margin-bottom: 16px;
-  }
-
-  .chart-section h3, .categories-section h3, .top-section h3 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
     font-size: 0.9375rem;
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+  }
+
+  .ring-sub-count span {
+    color: var(--text-primary);
     font-weight: 700;
-    margin-bottom: 16px;
   }
 
-  .bar-chart {
-    display: flex;
-    align-items: flex-end;
-    height: 120px;
-    gap: 2px;
-  }
-
-  .bar-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    height: 100%;
-    justify-content: flex-end;
-  }
-
-  .bar {
-    width: 100%;
-    background: var(--accent);
-    border-radius: 2px 2px 0 0;
-    min-height: 2px;
-  }
-
-  .bar-label { font-size: 0.5rem; color: var(--text-secondary); margin-top: 4px; }
-
-  .categories-chart { display: flex; gap: 16px; align-items: center; }
-
-  .pie-chart {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    background: conic-gradient(var(--accent) 0deg 90deg, var(--success) 90deg 180deg, #f59e0b 180deg 270deg, #6b7280 270deg 360deg);
-    flex-shrink: 0;
-  }
-
-  .categories-list { flex: 1; }
-
-  .category-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 0;
-    font-size: 0.8125rem;
-  }
-
-  .category-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .category-name { flex: 1; }
-  .category-value { font-weight: 600; }
-  .category-percent { color: var(--text-secondary); font-size: 0.75rem; width: 40px; text-align: right; }
-
-  .top-list { display: flex; flex-direction: column; gap: 10px; }
-
-  .top-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px;
-    background: var(--bg-tertiary);
-    border-radius: 10px;
-  }
-
-  .top-rank {
-    width: 20px;
-    height: 20px;
-    background: var(--accent);
-    color: white;
-    border-radius: 50%;
+  .ring-container {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    flex-shrink: 0;
+    margin: 0 auto 32px;
+    width: 260px;
+    height: 260px;
   }
 
-  .top-info { flex: 1; min-width: 0; }
-  .top-name { display: block; font-weight: 600; font-size: 0.875rem; }
-  .top-monthly { font-size: 0.6875rem; color: var(--text-secondary); }
-  .top-yearly { font-size: 0.8125rem; font-weight: 700; flex-shrink: 0; }
+  .ring-pointer {
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    z-index: 5;
+    line-height: 1;
+  }
+
+  .ring-svg {
+    position: relative;
+    z-index: 2;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .ring-svg:active { cursor: grabbing; }
+
+  .ring-center-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 3;
+    pointer-events: none;
+  }
+
+  .ring-cat-name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    transition: opacity 0.15s, transform 0.3s;
+    white-space: nowrap;
+  }
+
+  .ring-cat-name.animating {
+    animation: drumRoll 0.3s ease;
+  }
+
+  @keyframes drumRoll {
+    0% { opacity: 0; transform: translateY(12px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .ring-cat-details {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ring-glow-bg {
+    position: absolute;
+    inset: -20px;
+    border-radius: 50%;
+    z-index: 1;
+    pointer-events: none;
+    transition: background 0.5s ease;
+  }
+
+  .analytics-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .analytics-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .analytics-card-label {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    line-height: 1.3;
+  }
+
+  .analytics-card-value {
+    font-size: 1.375rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
 
   /* Settings Screen */
   .settings-section {
@@ -5194,7 +5304,7 @@ const styles = `
   }
 
   .calendar-day:active { transform: scale(0.95); }
-  .calendar-day.empty { background: transparent; cursor: default; }
+  .calendar-day.empty { background: var(--bg-secondary); opacity: 0.4; cursor: default; }
   .calendar-day.empty:active { transform: none; }
 
   .calendar-day.today {
