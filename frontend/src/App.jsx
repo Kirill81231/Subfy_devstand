@@ -776,7 +776,7 @@ const AmountModal = ({ visible, amount, currency, currencies, onAmountChange, on
 // ============================================
 // КОМПОНЕНТ: ФОРМА ПОДПИСКИ
 // ============================================
-const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, defaultNotificationSettings, customCategories = [], onAddCategory, categories = CATEGORIES, preselectedDate }) => {
+const SubscriptionForm = ({ onClose, onSave, onDelete, editData, templates, isLoading, defaultNotificationSettings, customCategories = [], onAddCategory, categories = CATEGORIES, preselectedDate }) => {
   const [step, setStep] = useState(editData ? 2 : 1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Все');
@@ -786,6 +786,7 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
   const [logoSheetTab, setLogoSheetTab] = useState('emoji');
   const [logoScaledUp, setLogoScaledUp] = useState(false);
   const [showAmountModal, setShowAmountModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Fix viewport shrink on keyboard open
   useEffect(() => {
@@ -878,8 +879,26 @@ const SubscriptionForm = ({ onClose, onSave, editData, templates, isLoading, def
             {(step === 1 || editData) ? <X size={20} /> : <ChevronLeft size={20} />}
           </button>
           <h2>{editData ? 'Редактировать' : step === 1 ? 'Выберите сервис' : 'Новая подписка'}</h2>
-          <div style={{ width: 32 }} />
+          {editData ? (
+            <button className="icon-btn delete" onClick={() => setShowDeleteConfirm(true)}>
+              <Trash2 size={18} />
+            </button>
+          ) : (
+            <div style={{ width: 32 }} />
+          )}
         </div>
+
+        <ConfirmModal
+          visible={showDeleteConfirm}
+          title="Удалить подписку?"
+          message={`${editData?.name || 'Подписка'} будет удалена без возможности восстановления`}
+          onConfirm={() => {
+            setShowDeleteConfirm(false);
+            onDelete?.(editData.id);
+            handleClose();
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
 
         {step === 1 ? (
           <div className="template-selector">
@@ -1399,13 +1418,11 @@ const AnalyticsScreen = ({ subscriptions, currencies, onClose }) => {
   };
 
   return (
-    <div className={`analytics-screen screen-enter ${isClosing ? 'screen-exit' : ''}`}>
-      <div className="analytics-header">
-        <button className="back-btn" onClick={handleClose}>
-          <ArrowLeft size={20} />
-        </button>
+    <div className={`analytics-halfsheet ${isClosing ? 'closing' : ''}`}>
+      <div className="sheet-handle" />
+      <div className="analytics-sheet-header">
         <h2>Аналитика</h2>
-        <div style={{ width: 32 }} />
+        <button className="analytics-close-btn" onClick={handleClose}><X size={18} /></button>
       </div>
 
       <div className="analytics-content">
@@ -2488,15 +2505,16 @@ export default function SubfyApp() {
     <div className={`app ${theme}`}>
       <style>{styles}</style>
 
-      {/* Overlay screens */}
+      {/* Analytics half-sheet */}
       {showAnalytics && (
-        <div className="screen-overlay">
+        <>
+          <div className="analytics-overlay" onClick={() => setShowAnalytics(false)} />
           <AnalyticsScreen
             subscriptions={subscriptions}
             currencies={CURRENCIES}
             onClose={() => setShowAnalytics(false)}
           />
-        </div>
+        </>
       )}
 
       {showSettings && (
@@ -2655,6 +2673,7 @@ export default function SubfyApp() {
         <SubscriptionForm
           onClose={() => { setShowForm(false); setEditingSubscription(null); setPreselectedDate(null); }}
           onSave={saveSubscription}
+          onDelete={deleteSubscription}
           editData={editingSubscription}
           templates={effectiveTemplates}
           isLoading={isLoading}
@@ -4757,15 +4776,77 @@ const styles = `
   .period-option:active { background: var(--bg-tertiary); }
   .period-option.active { color: var(--accent); }
 
-  /* Analytics Screen */
-  .analytics-screen, .settings-screen {
+  /* Analytics Half-Sheet */
+  .analytics-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 899;
+    animation: sheetOverlayIn 0.3s ease;
+  }
+
+  .analytics-halfsheet {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 55vh;
+    background: var(--bg-secondary);
+    border-radius: 0 0 24px 24px;
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    padding-top: calc(var(--tg-safe-area-top) + var(--tg-content-safe-area-top));
+    animation: analyticsSlideDown 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    overflow: hidden;
+  }
+
+  .analytics-halfsheet.closing {
+    animation: analyticsSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+
+  @keyframes analyticsSlideDown {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(0); }
+  }
+
+  @keyframes analyticsSlideUp {
+    from { transform: translateY(0); }
+    to { transform: translateY(-100%); }
+  }
+
+  .analytics-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 16px 8px;
+    flex-shrink: 0;
+  }
+
+  .analytics-sheet-header h2 { font-size: 1.125rem; font-weight: 700; }
+
+  .analytics-close-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Settings Screen (full-screen) */
+  .settings-screen {
     display: flex;
     flex-direction: column;
     height: 100%;
     background: var(--bg-primary);
   }
 
-  .analytics-header, .settings-header {
+  .settings-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -4775,7 +4856,7 @@ const styles = `
     flex-shrink: 0;
   }
 
-  .analytics-header h2, .settings-header h2 { font-size: 1rem; font-weight: 700; }
+  .settings-header h2 { font-size: 1rem; font-weight: 700; }
 
   .settings-tabs {
     display: flex;
@@ -4820,7 +4901,13 @@ const styles = `
     cursor: pointer;
   }
 
-  .analytics-content, .settings-content {
+  .analytics-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px 16px;
+  }
+
+  .settings-content {
     flex: 1;
     overflow-y: auto;
     padding: 16px;
@@ -4960,9 +5047,9 @@ const styles = `
   /* Ring Analytics */
   .ring-sub-count {
     text-align: center;
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
     color: var(--text-secondary);
-    margin-bottom: 24px;
+    margin-bottom: 12px;
   }
 
   .ring-sub-count span {
@@ -4975,9 +5062,9 @@ const styles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 32px;
-    width: 260px;
-    height: 260px;
+    margin: 0 auto 16px;
+    width: 240px;
+    height: 240px;
   }
 
   .ring-pointer {
@@ -5285,12 +5372,12 @@ const styles = `
   .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    grid-template-rows: repeat(6, 1fr);
+    grid-template-rows: repeat(6, auto);
     gap: 4px;
   }
 
   .calendar-day {
-    min-height: 48px;
+    aspect-ratio: 1;
     background: var(--bg-secondary);
     border-radius: 10px;
     display: flex;
@@ -5301,6 +5388,7 @@ const styles = `
     cursor: pointer;
     position: relative;
     transition: transform 0.15s;
+    overflow: hidden;
   }
 
   .calendar-day:active { transform: scale(0.95); }
