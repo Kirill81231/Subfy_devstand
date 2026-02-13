@@ -1796,6 +1796,11 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
       days.push({ date: dayDate, subscriptions: daySubs });
     }
 
+    // Pad to 42 cells (6 rows) so calendar height is always consistent
+    while (days.length < 42) {
+      days.push({ date: null, subscriptions: [] });
+    }
+
     return days;
   };
 
@@ -2802,26 +2807,26 @@ const styles = `
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 16px 16px 12px;
+    padding: 24px 16px 28px;
     position: relative;
     flex-shrink: 0;
   }
 
   .hero-amount-glow {
     position: absolute;
-    width: 180px;
-    height: 80px;
+    width: 260px;
+    height: 100px;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: radial-gradient(ellipse, var(--accent) 0%, transparent 70%);
-    opacity: 0.2;
-    filter: blur(30px);
+    background: radial-gradient(ellipse, var(--accent) 0%, var(--accent-secondary) 40%, transparent 70%);
+    opacity: 0.12;
+    filter: blur(40px);
     pointer-events: none;
   }
 
   .hero-amount-text {
-    font-size: 2.75rem;
+    font-size: 3.25rem;
     font-weight: 800;
     color: var(--text-primary);
     position: relative;
@@ -2831,7 +2836,7 @@ const styles = `
 
   .hero-badge {
     display: inline-block;
-    margin-top: 8px;
+    margin-top: 10px;
     padding: 4px 14px;
     border-radius: 20px;
     font-size: 0.75rem;
@@ -5170,11 +5175,12 @@ const styles = `
   .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
+    grid-template-rows: repeat(6, 1fr);
     gap: 4px;
   }
 
   .calendar-day {
-    min-height: 52px;
+    min-height: 48px;
     background: var(--bg-secondary);
     border-radius: 10px;
     display: flex;
