@@ -2865,12 +2865,23 @@ const styles = `
   }
 
   :root {
-    --tg-safe-area-top: 0px;
-    --tg-safe-area-bottom: 0px;
-    --tg-content-safe-area-top: 0px;
-    --tg-content-safe-area-bottom: 0px;
-  }
-
+  --tg-safe-area-top: 0px;
+  --tg-safe-area-bottom: 0px;
+  --tg-content-safe-area-top: 0px;
+  --tg-content-safe-area-bottom: 0px;
+  
+  /* Цвета для тёмной темы (по умолчанию) */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #141414;
+  --bg-tertiary: #1a1a1a;
+  --text-primary: #ffffff;
+  --text-secondary: #888888;
+  --accent: #6366f1;
+  --accent-secondary: #8b5cf6;
+  --border: #222222;
+  --danger: #ef4444;
+  --success: #10b981;
+}
   html, body, #root {
     height: 100%;
     overflow: hidden;
