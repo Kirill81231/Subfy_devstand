@@ -369,6 +369,10 @@ const Toast = ({ message, visible, type = 'success', onHide }) => {
 // ============================================
 // КОМПОНЕНТ: ОНБОРДИНГ
 // ============================================
+import onboarding1 from './onboarding-1.png';
+import onboarding2 from './onboarding-2.png';
+import onboarding3 from './onboarding-3.png';
+
 const OnboardingScreen = ({ onComplete }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [touchStart, setTouchStart] = useState(0);
@@ -376,19 +380,19 @@ const OnboardingScreen = ({ onComplete }) => {
 
   const slides = [
     {
-      image: '/src/onboarding-1.png', // Привет! Это Subfy
+      image: onboarding1,
       title: 'Привет!',
       subtitle: 'Это Subfy',
       description: 'Отслеживайте подписки и получайте напоминания о платежах — всё в Telegram'
     },
     {
-      image: '/src/onboarding-2.png', // Все подписки в одном месте
+      image: onboarding2,
       title: 'Все подписки',
       subtitle: 'в одном месте',
       description: 'Переключайтесь между календарём и списком одним тапом'
     },
     {
-      image: '/src/onboarding-3.png', // Уведомления о списании
+      image: onboarding3,
       title: 'Уведомления',
       subtitle: 'о списании',
       description: 'Напоминания приходят сообщением от бота — всегда на виду в Telegram'
@@ -462,7 +466,6 @@ const OnboardingScreen = ({ onComplete }) => {
     </div>
   );
 };
-
 
 // ============================================
 // КОМПОНЕНТ: ЗАГРУЗКА
