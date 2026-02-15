@@ -3008,26 +3008,26 @@ const styles = `
 
   .spin { animation: spin 1s linear infinite; }
 
-  /* Onboarding */
+    /* Onboarding Screen */
   .onboarding {
-    position: fixed;
-    inset: 0;
+    width: 100%;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
     background: var(--bg-primary);
-    color: var(--text-primary);
   }
 
   .onboarding-slides {
     flex: 1;
     overflow: hidden;
-    padding-top: calc(var(--tg-safe-area-top) + var(--tg-content-safe-area-top));
+    position: relative;
   }
 
   .slides-track {
     display: flex;
     height: 100%;
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease-out;
   }
 
   .slide {
@@ -3036,113 +3036,106 @@ const styles = `
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px 32px;
+    padding: 0 32px 120px;
     text-align: center;
   }
 
-  .slide-emoji { font-size: 80px; margin-bottom: 32px; }
-  .slide-title { font-size: 2rem; font-weight: 800; margin-bottom: 8px; }
-  .slide-subtitle { font-size: 1.5rem; font-weight: 600; color: var(--accent); margin-bottom: 16px; }
-  .slide-description { font-size: 1rem; color: var(--text-secondary); max-width: 280px; line-height: 1.5; }
-
-  .onboarding-footer {
-    padding: 24px 32px;
-    padding-bottom: calc(24px + var(--tg-safe-area-bottom));
-  }
-
-  .dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 24px; }
-
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: none;
-    background: var(--border);
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .dot.active {
-    width: 24px;
-    border-radius: 4px;
-    background: var(--accent);
-  }
-
-  .next-btn, .start-btn {
+  /* Картинка — занимает больше места, центрируется с учётом glow */
+  .slide-image {
     width: 100%;
+    max-width: 400px;
+    height: 420px;
+    margin-bottom: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 16px;
-    border: none;
-    border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-    .slide-image {
-    width: 100%;
-    max-width: 320px;
-    height: 340px;
-    margin: 0 auto 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
+    position: relative;
   }
 
   .slide-image img {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    object-position: center;
   }
 
-  .slide {
-    min-width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    padding: 60px 32px 40px;
-    text-align: center;
-  }
-
+  /* Заголовок: 78.38px, межстрочный интервал 100% */
   .slide-title {
-    font-size: 2rem;
+    font-size: 78.38px;
     font-weight: 800;
-    margin-bottom: 8px;
+    line-height: 100%;
+    margin: 0;
     color: var(--text-primary);
   }
 
+  /* Подзаголовок: 48px, межстрочный интервал 100%, отступ сверху 54px */
   .slide-subtitle {
-    font-size: 1.5rem;
-    font-weight: 600;
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 100%;
+    margin: 54px 0 0 0;
     color: var(--accent);
-    margin-bottom: 16px;
   }
 
+  /* Описание */
   .slide-description {
-    font-size: 1rem;
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 150%;
     color: var(--text-secondary);
-    max-width: 280px;
-    line-height: 1.5;
+    max-width: 320px;
+    margin: 16px 0 0 0;
   }
 
+  /* Footer с точками и кнопкой */
+  .onboarding-footer {
+    padding: 0 32px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .dots {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: none;
+    background: var(--text-secondary);
+    opacity: 0.3;
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.3s ease;
+  }
+
+  .dot.active {
+    width: 24px;
+    border-radius: 4px;
+    background: var(--accent);
+    opacity: 1;
+  }
+
+  /* Кнопка "Начать" */
   .start-btn {
     width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 16px;
     border: none;
     border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: 17px;
+    font-weight: 600;
     cursor: pointer;
     background: var(--accent);
     color: white;
+    transition: opacity 0.2s;
+  }
+
+  .start-btn:active {
+    opacity: 0.8;
   }
 
   .next-btn { background: var(--bg-secondary); color: var(--text-primary); }
