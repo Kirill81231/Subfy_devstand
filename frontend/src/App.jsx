@@ -1876,6 +1876,23 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
           </div>
         </div>
         <p className="settings-hint">Уведомления приходят через Telegram‑бот. Убедитесь, что бот не заблокирован и уведомления от него включены.</p>
+        <div className="settings-row-divider" />
+        
+        {/* Onboarding reset dev */}
+        <div className="settings-row">
+          <button 
+            className="test-notification-btn" 
+            style={{ background: 'var(--danger)', color: 'white' }}
+            onClick={() => {
+              if (confirm('Сбросить все данные и вернуться к onboarding?')) {
+                localStorage.clear();
+                window.location.reload();
+              }
+            }}
+          >
+            🔄 Сбросить приложение
+          </button>
+        </div>
 
         {/* Theme */}
         <div className="settings-section-label">ОФОРМЛЕНИЕ</div>
