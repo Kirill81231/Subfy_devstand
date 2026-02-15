@@ -376,47 +376,53 @@ const OnboardingScreen = ({ onComplete }) => {
 
   const slides = [
     {
-      emoji: '👋',
+      image: '/src/onboarding-1.png', // Привет! Это Subfy
       title: 'Привет!',
       subtitle: 'Это Subfy',
-      description: 'Сервис отслеживания подписок прямо в Telegram',
+      description: 'Отслеживайте подписки и получайте напоминания о платежах — всё в Telegram'
     },
     {
-      emoji: '📊',
+      image: '/src/onboarding-2.png', // Все подписки в одном месте
       title: 'Все подписки',
       subtitle: 'в одном месте',
-      description: 'Добавляй подписки из готовых шаблонов или создавай свои',
+      description: 'Переключайтесь между календарём и списком одним тапом'
     },
     {
-      emoji: '🔔',
+      image: '/src/onboarding-3.png', // Уведомления о списании
       title: 'Уведомления',
-      subtitle: 'о списаниях',
-      description: 'Получай напоминания за 3 дня и в день списания',
-    },
+      subtitle: 'о списании',
+      description: 'Напоминания приходят сообщением от бота — всегда на виду в Telegram'
+    }
   ];
 
-  const handleTouchStart = (e) => setTouchStart(e.touches[0].clientX);
-  const handleTouchMove = (e) => setTouchEnd(e.touches[0].clientX);
+  const handleTouchStart = (e) => {
+    setTouchStart(e.touches[0].clientX);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEnd(e.touches[0].clientX);
+  };
 
   const handleTouchEnd = () => {
     if (!touchStart || !touchEnd) return;
     const distance = touchStart - touchEnd;
     const minSwipeDistance = 50;
 
-    if (Math.abs(distance) > minSwipeDistance) {
+    if (Math.abs(distance) >= minSwipeDistance) {
       if (distance > 0 && currentSlide < slides.length - 1) {
-        setCurrentSlide(prev => prev + 1);
+        setCurrentSlide((prev) => prev + 1);
       } else if (distance < 0 && currentSlide > 0) {
-        setCurrentSlide(prev => prev - 1);
+        setCurrentSlide((prev) => prev - 1);
       }
     }
+
     setTouchStart(0);
     setTouchEnd(0);
   };
 
   return (
     <div className="onboarding">
-      <div 
+      <div
         className="onboarding-slides"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -425,7 +431,9 @@ const OnboardingScreen = ({ onComplete }) => {
         <div className="slides-track" style={{ transform: `translateX(-${currentSlide * 100}%)` }}>
           {slides.map((slide, index) => (
             <div key={index} className="slide">
-              <div className="slide-emoji">{slide.emoji}</div>
+              <div className="slide-image">
+                <img src={slide.image} alt="" />
+              </div>
               <h1 className="slide-title">{slide.title}</h1>
               <h2 className="slide-subtitle">{slide.subtitle}</h2>
               <p className="slide-description">{slide.description}</p>
@@ -445,17 +453,16 @@ const OnboardingScreen = ({ onComplete }) => {
           ))}
         </div>
 
-        {currentSlide === slides.length - 1 ? (
-          <button className="start-btn" onClick={onComplete}>Начать</button>
-        ) : (
-          <button className="next-btn" onClick={() => setCurrentSlide(prev => prev + 1)}>
-            Далее <ChevronRight size={20} />
+        {currentSlide === slides.length - 1 && (
+          <button className="start-btn" onClick={onComplete}>
+            Начать
           </button>
         )}
       </div>
     </div>
   );
 };
+
 
 // ============================================
 // КОМПОНЕНТ: ЗАГРУЗКА
@@ -3070,6 +3077,69 @@ const styles = `
     font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
+  }
+
+    .slide-image {
+    width: 100%;
+    max-width: 320px;
+    height: 340px;
+    margin: 0 auto 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .slide-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .slide {
+    min-width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 60px 32px 40px;
+    text-align: center;
+  }
+
+  .slide-title {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+
+  .slide-subtitle {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+
+  .slide-description {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    max-width: 280px;
+    line-height: 1.5;
+  }
+
+  .start-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    border: none;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: var(--accent);
+    color: white;
   }
 
   .next-btn { background: var(--bg-secondary); color: var(--text-primary); }
