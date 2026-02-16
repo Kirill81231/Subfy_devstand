@@ -441,7 +441,7 @@ const OnboardingScreen = ({ onComplete, theme }) => {
   return (
     <div className={`onboarding ${theme}`}>
       <button className="onboarding-skip" onClick={onComplete}>
-        {currentSlide === slides.length - 1 ? 'Начать' : 'Пропустить'}
+        Пропустить
       </button>
 
       <div
@@ -474,14 +474,22 @@ const OnboardingScreen = ({ onComplete, theme }) => {
         </div>
       </div>
 
-      <div className="onboarding-indicators">
-        {slides.map((_, index) => (
-          <button
-            key={index}
-            className={`indicator ${index === currentSlide ? 'active' : ''}`}
-            onClick={() => setCurrentSlide(index)}
-          />
-        ))}
+      <div className="onboarding-bottom">
+        <div className="onboarding-indicators">
+          {slides.map((_, index) => (
+            <button
+              key={index}
+              className={`indicator ${index === currentSlide ? 'active' : ''}`}
+              onClick={() => setCurrentSlide(index)}
+            />
+          ))}
+        </div>
+
+        {currentSlide === slides.length - 1 && (
+          <button className="onboarding-start-btn" onClick={onComplete}>
+            Начать
+          </button>
+        )}
       </div>
     </div>
   );
@@ -3200,14 +3208,39 @@ const styles = `
     margin: 16px auto 0;
   }
 
-  /* Page indicators */
+  /* Bottom area: indicators + start button */
+  .onboarding-bottom {
+    flex-shrink: 0;
+    padding: 16px 32px calc(32px + var(--tg-safe-area-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
   .onboarding-indicators {
     display: flex;
     gap: 8px;
     justify-content: center;
     align-items: center;
-    padding: 20px 32px calc(36px + var(--tg-safe-area-bottom, 0px));
-    flex-shrink: 0;
+  }
+
+  .onboarding-start-btn {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 14px;
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--ob-accent);
+    color: #fff;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+
+  .onboarding-start-btn:active {
+    opacity: 0.8;
   }
 
   .indicator {
