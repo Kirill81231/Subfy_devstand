@@ -369,32 +369,42 @@ const Toast = ({ message, visible, type = 'success', onHide }) => {
 // ============================================
 // КОМПОНЕНТ: ОНБОРДИНГ
 // ============================================
-import onboarding1 from './onboarding-1.png';
-import onboarding2 from './onboarding-2.png';
-import onboarding3 from './onboarding-3.png';
+import floatingObjectImg from './img/Floating Object.png';
+import calendarImg from './img/Calendar.png';
+import notificationImg from './img/Notificastion.png';
+import fadeGlowImg from './img/Fade.png';
 
-const OnboardingScreen = ({ onComplete }) => {
+const OnboardingScreen = ({ onComplete, theme }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
   const slides = [
     {
-      image: onboarding1,
+      mainImage: floatingObjectImg,
+      useGlow: true,
+      imageClass: 'floating-objects',
       title: 'Привет!',
-      subtitle: 'Это Subfy',
+      subtitle: 'Это ',
+      subtitleAccent: 'Subfy',
       description: 'Отслеживайте подписки и получайте напоминания о платежах — всё в Telegram'
     },
     {
-      image: onboarding2,
+      mainImage: calendarImg,
+      useGlow: false,
+      imageClass: 'calendar',
       title: 'Все подписки',
-      subtitle: 'в одном месте',
+      subtitle: '',
+      subtitleAccent: 'в одном месте',
       description: 'Переключайтесь между календарём и списком одним тапом'
     },
     {
-      image: onboarding3,
+      mainImage: notificationImg,
+      useGlow: true,
+      imageClass: 'notification',
       title: 'Уведомления',
-      subtitle: 'о списании',
+      subtitle: '',
+      subtitleAccent: 'о списании',
       description: 'Напоминания приходят сообщением от бота — всегда на виду в Telegram'
     }
   ];
@@ -413,10 +423,14 @@ const OnboardingScreen = ({ onComplete }) => {
     const minSwipeDistance = 50;
 
     if (Math.abs(distance) >= minSwipeDistance) {
-      if (distance > 0 && currentSlide < slides.length - 1) {
-        setCurrentSlide((prev) => prev + 1);
+      if (distance > 0) {
+        if (currentSlide < slides.length - 1) {
+          setCurrentSlide(prev => prev + 1);
+        } else {
+          onComplete();
+        }
       } else if (distance < 0 && currentSlide > 0) {
-        setCurrentSlide((prev) => prev - 1);
+        setCurrentSlide(prev => prev - 1);
       }
     }
 
@@ -425,43 +439,49 @@ const OnboardingScreen = ({ onComplete }) => {
   };
 
   return (
-    <div className="onboarding">
+    <div className={`onboarding ${theme}`}>
+      <button className="onboarding-skip" onClick={onComplete}>
+        {currentSlide === slides.length - 1 ? 'Начать' : 'Пропустить'}
+      </button>
+
       <div
         className="onboarding-slides"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        <div className="slides-track" style={{ transform: `translateX(-${currentSlide * 100}%)` }}>
+        <div
+          className="slides-track"
+          style={{ transform: `translateX(-${currentSlide * 100}%)` }}
+        >
           {slides.map((slide, index) => (
             <div key={index} className="slide">
-              <div className="slide-image">
-                <img src={slide.image} alt="" />
+              <div className={`slide-image-area ${slide.imageClass}`}>
+                {slide.useGlow && (
+                  <img className="slide-glow" src={fadeGlowImg} alt="" />
+                )}
+                <img className="slide-main-img" src={slide.mainImage} alt="" />
               </div>
-              <h1 className="slide-title">{slide.title}</h1>
-              <h2 className="slide-subtitle">{slide.subtitle}</h2>
-              <p className="slide-description">{slide.description}</p>
+              <div className="slide-text">
+                <h1 className="slide-title">{slide.title}</h1>
+                <h2 className="slide-subtitle">
+                  {slide.subtitle}<span className="accent-text">{slide.subtitleAccent}</span>
+                </h2>
+                <p className="slide-description">{slide.description}</p>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="onboarding-footer">
-        <div className="dots">
-          {slides.map((_, index) => (
-            <button
-              key={index}
-              className={`dot ${index === currentSlide ? 'active' : ''}`}
-              onClick={() => setCurrentSlide(index)}
-            />
-          ))}
-        </div>
-
-        {currentSlide === slides.length - 1 && (
-          <button className="start-btn" onClick={onComplete}>
-            Начать
-          </button>
-        )}
+      <div className="onboarding-indicators">
+        {slides.map((_, index) => (
+          <button
+            key={index}
+            className={`indicator ${index === currentSlide ? 'active' : ''}`}
+            onClick={() => setCurrentSlide(index)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -2602,7 +2622,7 @@ export default function SubfyApp() {
     return (
       <>
         <style>{styles}</style>
-        <OnboardingScreen onComplete={handleOnboardingComplete} />
+        <OnboardingScreen onComplete={handleOnboardingComplete} theme={theme} />
       </>
     );
   }
@@ -3010,136 +3030,206 @@ const styles = `
 
     /* Onboarding Screen */
   .onboarding {
+    --ob-bg: #0a0a0a;
+    --ob-text: #ffffff;
+    --ob-text-secondary: #999999;
+    --ob-accent: #6366f1;
     width: 100%;
     height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg-primary);
-  }
-
-  .onboarding-slides {
-    flex: 1;
-    overflow: hidden;
+    background: var(--ob-bg);
     position: relative;
   }
 
-  .slides-track {
-    display: flex;
-    height: 100%;
-    transition: transform 0.3s ease-out;
+  .onboarding.light {
+    --ob-bg: #ffffff;
+    --ob-text: #1a1a1a;
+    --ob-text-secondary: #888888;
   }
 
-  .slide {
+  /* Skip / Start link */
+  .onboarding-skip {
+    position: absolute;
+    top: calc(16px + var(--tg-safe-area-top, 0px) + var(--tg-content-safe-area-top, 0px));
+    right: 20px;
+    z-index: 10;
+    background: none;
+    border: none;
+    color: var(--ob-text-secondary);
+    font-size: 15px;
+    font-weight: 500;
+    opacity: 0.4;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+
+  .onboarding-skip:active {
+    opacity: 0.7;
+  }
+
+  /* Slides container */
+  .onboarding .onboarding-slides {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+  }
+
+  .onboarding .slides-track {
+    display: flex;
+    height: 100%;
+    transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  .onboarding .slide {
     min-width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 0 32px 120px;
+    padding: 0 32px;
     text-align: center;
   }
 
-  /* Картинка — занимает больше места, центрируется с учётом glow */
-  .slide-image {
+  /* Image area */
+  .slide-image-area {
+    flex: 1;
     width: 100%;
-    max-width: 400px;
-    height: 420px;
-    margin-bottom: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
+    overflow: hidden;
+    min-height: 0;
   }
 
-  .slide-image img {
-    width: 100%;
-    height: 100%;
+  .slide-glow {
+    position: absolute;
+    width: 110%;
+    height: 110%;
     object-fit: contain;
-    object-position: center;
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 0;
   }
 
-  /* Заголовок: 78.38px, межстрочный интервал 100% */
-  .slide-title {
-    font-size: 78.38px;
+  .onboarding.light .slide-glow {
+    display: none;
+  }
+
+  .onboarding.light .slide-image-area::before {
+    content: '';
+    position: absolute;
+    width: 70%;
+    height: 70%;
+    background: radial-gradient(ellipse, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .slide-main-img {
+    position: relative;
+    z-index: 1;
+    max-width: 80%;
+    max-height: 80%;
+    object-fit: contain;
+  }
+
+  /* Slide 1: Floating objects */
+  .slide-image-area.floating-objects .slide-main-img {
+    max-width: 70%;
+    max-height: 70%;
+  }
+
+  /* Slide 2: Calendar */
+  .slide-image-area.calendar .slide-main-img {
+    max-width: 92%;
+    max-height: 92%;
+    border-radius: 16px;
+  }
+
+  .onboarding.light .slide-image-area.calendar .slide-main-img {
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Slide 3: Notification */
+  .slide-image-area.notification .slide-main-img {
+    max-width: 85%;
+    max-height: 45%;
+  }
+
+  .onboarding.light .slide-image-area.notification .slide-main-img {
+    filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.08));
+  }
+
+  /* Text area */
+  .slide-text {
+    flex-shrink: 0;
+    padding: 8px 0 16px;
+  }
+
+  .onboarding .slide-title {
+    font-size: 36px;
     font-weight: 800;
-    line-height: 100%;
+    line-height: 1.1;
     margin: 0;
-    color: var(--text-primary);
+    color: var(--ob-text);
   }
 
-  /* Подзаголовок: 48px, межстрочный интервал 100%, отступ сверху 54px */
-  .slide-subtitle {
-    font-size: 48px;
+  .onboarding .slide-subtitle {
+    font-size: 36px;
     font-weight: 700;
-    line-height: 100%;
-    margin: 54px 0 0 0;
-    color: var(--accent);
+    line-height: 1.1;
+    margin: 4px 0 0 0;
+    color: var(--ob-text);
   }
 
-  /* Описание */
-  .slide-description {
-    font-size: 17px;
+  .accent-text {
+    color: var(--ob-accent);
+  }
+
+  .onboarding .slide-description {
+    font-size: 16px;
     font-weight: 400;
-    line-height: 150%;
-    color: var(--text-secondary);
-    max-width: 320px;
-    margin: 16px 0 0 0;
+    line-height: 1.5;
+    color: var(--ob-text-secondary);
+    max-width: 300px;
+    margin: 16px auto 0;
   }
 
-  /* Footer с точками и кнопкой */
-  .onboarding-footer {
-    padding: 0 32px 40px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .dots {
+  /* Page indicators */
+  .onboarding-indicators {
     display: flex;
     gap: 8px;
     justify-content: center;
+    align-items: center;
+    padding: 20px 32px calc(36px + var(--tg-safe-area-bottom, 0px));
+    flex-shrink: 0;
   }
 
-  .dot {
-    width: 8px;
+  .indicator {
     height: 8px;
-    border-radius: 50%;
+    border-radius: 4px;
     border: none;
-    background: var(--text-secondary);
-    opacity: 0.3;
     cursor: pointer;
     padding: 0;
-    transition: all 0.3s ease;
+    transition: all 0.35s ease;
   }
 
-  .dot.active {
-    width: 24px;
-    border-radius: 4px;
-    background: var(--accent);
+  .indicator:not(.active) {
+    width: 8px;
+    background: var(--ob-text-secondary);
+    opacity: 0.3;
+  }
+
+  .indicator.active {
+    width: 28px;
+    background: var(--ob-accent);
     opacity: 1;
   }
-
-  /* Кнопка "Начать" */
-  .start-btn {
-    width: 100%;
-    padding: 16px;
-    border: none;
-    border-radius: 12px;
-    font-size: 17px;
-    font-weight: 600;
-    cursor: pointer;
-    background: var(--accent);
-    color: white;
-    transition: opacity 0.2s;
-  }
-
-  .start-btn:active {
-    opacity: 0.8;
-  }
-
-  .next-btn { background: var(--bg-secondary); color: var(--text-primary); }
-  .start-btn { background: var(--accent); color: white; }
 
   /* Header */
   .app-header {
