@@ -1909,22 +1909,6 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
         <p className="settings-hint">Уведомления приходят через Telegram‑бот. Убедитесь, что бот не заблокирован и уведомления от него включены.</p>
         <div className="settings-row-divider" />
         
-        {/* Onboarding reset dev */}
-        <div className="settings-row">
-          <button 
-            className="test-notification-btn" 
-            style={{ background: 'var(--danger)', color: 'white' }}
-            onClick={() => {
-              if (confirm('Сбросить все данные и вернуться к onboarding?')) {
-                localStorage.clear();
-                window.location.reload();
-              }
-            }}
-          >
-            🔄 Сбросить приложение
-          </button>
-        </div>
-
         {/* Theme */}
         <div className="settings-section-label">ОФОРМЛЕНИЕ</div>
         <div className="settings-card">
@@ -1940,6 +1924,29 @@ const SettingsScreen = ({ user, appSettings, onUpdateSettings, categories, custo
             </label>
           </div>
         </div>
+
+        {/* Developer menu — only for allowed IDs */}
+        {['820187903', 'dev-user'].includes(String(telegramId)) && (
+          <>
+            <div className="settings-section-label">РАЗРАБОТЧИК</div>
+            <div className="settings-card">
+              <div className="settings-row">
+                <button
+                  className="test-notification-btn"
+                  style={{ background: 'var(--danger)', color: 'white' }}
+                  onClick={() => {
+                    if (confirm('Сбросить все данные и вернуться к onboarding?')) {
+                      localStorage.clear();
+                      window.location.reload();
+                    }
+                  }}
+                >
+                  🔄 Сбросить приложение
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Version */}
         <div className="version-badge" onClick={() => setShowVersionInfo(true)}>
@@ -1992,6 +1999,23 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
   const [sheetClosing, setSheetClosing] = useState(false);
   const [btnAnimating, setBtnAnimating] = useState(false);
   const prevIsCurrentRef = useRef(true);
+  const [slideDir, setSlideDir] = useState(null); // 'left' | 'right' | null
+  const isAnimating = useRef(false);
+
+  // Swipe to change month
+  const calTouchStartX = useRef(0);
+  const calTouchEndX = useRef(0);
+
+  const handleCalTouchStart = (e) => { calTouchStartX.current = e.touches[0].clientX; };
+  const handleCalTouchMove = (e) => { calTouchEndX.current = e.touches[0].clientX; };
+  const handleCalTouchEnd = () => {
+    const dx = calTouchStartX.current - calTouchEndX.current;
+    if (Math.abs(dx) >= 50) {
+      changeMonth(dx > 0 ? 1 : -1);
+    }
+    calTouchStartX.current = 0;
+    calTouchEndX.current = 0;
+  };
 
   const now = new Date();
   const isCurrentMonth = currentMonth.getFullYear() === now.getFullYear() && currentMonth.getMonth() === now.getMonth();
@@ -2046,10 +2070,45 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
   const monthName = currentMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 
   const changeMonth = (delta) => {
-    const newDate = new Date(currentMonth);
-    newDate.setMonth(newDate.getMonth() + delta);
-    onChangeMonth(newDate);
+    if (isAnimating.current) return;
+    isAnimating.current = true;
+    const exitDir = delta > 0 ? 'left' : 'right';
+    const enterDir = delta > 0 ? 'right' : 'left';
+    setSlideDir('exit-' + exitDir);
     closeSheet();
+    setTimeout(() => {
+      const newDate = new Date(currentMonth);
+      newDate.setMonth(newDate.getMonth() + delta);
+      onChangeMonth(newDate);
+      setSlideDir('enter-' + enterDir);
+      setTimeout(() => {
+        setSlideDir(null);
+        isAnimating.current = false;
+      }, 200);
+    }, 200);
+  };
+
+  const returnToCurrent = () => {
+    if (isAnimating.current) return;
+    const now = new Date();
+    const curY = currentMonth.getFullYear(), curM = currentMonth.getMonth();
+    const nowY = now.getFullYear(), nowM = now.getMonth();
+    if (curY === nowY && curM === nowM) return;
+    // Direction: current month is in the future → slide right (delta -1), in the past → slide left (delta +1)
+    const delta = (curY * 12 + curM) > (nowY * 12 + nowM) ? -1 : 1;
+    isAnimating.current = true;
+    const exitDir = delta > 0 ? 'left' : 'right';
+    const enterDir = delta > 0 ? 'right' : 'left';
+    setSlideDir('exit-' + exitDir);
+    closeSheet();
+    setTimeout(() => {
+      onChangeMonth(new Date(nowY, nowM, 1));
+      setSlideDir('enter-' + enterDir);
+      setTimeout(() => {
+        setSlideDir(null);
+        isAnimating.current = false;
+      }, 200);
+    }, 200);
   };
 
   const formatDateForForm = (date) => {
@@ -2088,7 +2147,7 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
     <div className="calendar-view">
       <div className="calendar-header">
         <button onClick={() => changeMonth(-1)}><ChevronLeft size={20} /></button>
-        <div className="calendar-title">
+        <div className={`calendar-title ${slideDir || ''}`}>
           <h3>{monthName}</h3>
         </div>
         <button onClick={() => changeMonth(1)}><ChevronRight size={20} /></button>
@@ -2100,7 +2159,12 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
         ))}
       </div>
 
-      <div className="calendar-grid">
+      <div
+        className={`calendar-grid ${slideDir || ''}`}
+        onTouchStart={handleCalTouchStart}
+        onTouchMove={handleCalTouchMove}
+        onTouchEnd={handleCalTouchEnd}
+      >
         {days.map((day, i) => {
           const isToday = day.date?.toDateString() === new Date().toDateString();
           const hasSubs = day.subscriptions.length > 0;
@@ -2146,7 +2210,7 @@ const CalendarView = ({ subscriptions, currencies, onOpenForm, onEditSubscriptio
           Добавить подписку
         </button>
       ) : (
-        <button className={`calendar-add-btn calendar-return-btn ${btnAnimating ? 'drum-in' : ''}`} onClick={() => onChangeMonth(new Date())}>
+        <button className={`calendar-add-btn calendar-return-btn ${btnAnimating ? 'drum-in' : ''}`} onClick={returnToCurrent}>
           <ArrowLeft size={20} />
           Вернуться к активному месяцу
         </button>
@@ -3106,38 +3170,69 @@ const styles = `
     align-items: center;
     justify-content: center;
     position: relative;
-    overflow: hidden;
     min-height: 0;
   }
 
-  /* CSS glow background — replaces Fade.png, same on every slide */
+  /* CSS glow background — per-slide shapes */
   .slide-image-area::before {
     content: '';
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 90%;
-    height: 80%;
-    border-radius: 40%;
-    background: radial-gradient(ellipse at center,
-      rgba(99, 102, 241, 0.55) 0%,
-      rgba(99, 102, 241, 0.3) 30%,
-      rgba(99, 102, 241, 0.08) 60%,
-      transparent 80%
-    );
-    filter: blur(30px);
     z-index: 0;
     pointer-events: none;
   }
 
-  .onboarding.light .slide-image-area::before {
+  /* Slide 1: floating objects — wide horizontal blob */
+  .slide-image-area.floating-objects::before {
+    width: 240%;
+    height: 90%;
+    border-radius: 40%;
     background: radial-gradient(ellipse at center,
-      rgba(99, 102, 241, 0.12) 0%,
-      rgba(99, 102, 241, 0.05) 40%,
+      rgba(99, 102, 241, 0.7) 0%,
+      rgba(99, 102, 241, 0.45) 25%,
+      rgba(99, 102, 241, 0.15) 55%,
+      transparent 75%
+    );
+    filter: blur(40px);
+  }
+
+  /* Slide 2: calendar — very wide glow */
+  .slide-image-area.calendar::before {
+    width: 250%;
+    height: 100%;
+    border-radius: 45%;
+    background: radial-gradient(ellipse at center,
+      rgba(99, 102, 241, 0.65) 0%,
+      rgba(99, 102, 241, 0.35) 25%,
+      rgba(99, 102, 241, 0.1) 50%,
       transparent 70%
     );
-    filter: blur(20px);
+    filter: blur(50px);
+  }
+
+  /* Slide 3: notification — tight centered glow */
+  .slide-image-area.notification::before {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle at center,
+      rgba(99, 102, 241, 0.75) 0%,
+      rgba(99, 102, 241, 0.5) 20%,
+      rgba(99, 102, 241, 0.2) 45%,
+      transparent 65%
+    );
+    filter: blur(35px);
+  }
+
+  .onboarding.light .slide-image-area::before {
+    background: radial-gradient(ellipse at center,
+      rgba(99, 102, 241, 0.15) 0%,
+      rgba(99, 102, 241, 0.07) 40%,
+      transparent 70%
+    );
+    filter: blur(25px);
   }
 
   .slide-main-img {
@@ -3150,8 +3245,8 @@ const styles = `
 
   /* Slide 1: Floating objects — big and centered */
   .slide-image-area.floating-objects .slide-main-img {
-    max-width: 90%;
-    max-height: 90%;
+    max-width: 100%;
+    max-height: 100%;
   }
 
   /* Slide 2: Calendar — big */
@@ -3175,9 +3270,10 @@ const styles = `
     filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.08));
   }
 
-  /* Text area */
+  /* Text area — fixed height so text stays at the same level on all slides */
   .slide-text {
     flex-shrink: 0;
+    height: 200px;
     padding: 8px 0 16px;
   }
 
@@ -3318,14 +3414,14 @@ const styles = `
 
   .hero-amount-glow {
     position: absolute;
-    width: 260px;
-    height: 100px;
+    width: 320px;
+    height: 120px;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: radial-gradient(ellipse, var(--accent) 0%, var(--accent-secondary) 40%, transparent 70%);
-    opacity: 0.12;
-    filter: blur(40px);
+    background: radial-gradient(ellipse, var(--accent) 0%, var(--accent-secondary) 35%, transparent 70%);
+    opacity: 0.22;
+    filter: blur(45px);
     pointer-events: none;
   }
 
@@ -5787,8 +5883,31 @@ const styles = `
     justify-content: center;
   }
 
-  .calendar-title { text-align: center; }
+  .calendar-title { text-align: center; overflow: hidden; }
   .calendar-title h3 { font-size: 1rem; font-weight: 700; text-transform: capitalize; }
+
+  /* Calendar slide animations */
+  .exit-left  { animation: calExitLeft 0.2s ease-in forwards; }
+  .exit-right { animation: calExitRight 0.2s ease-in forwards; }
+  .enter-left { animation: calEnterLeft 0.2s ease-out forwards; }
+  .enter-right { animation: calEnterRight 0.2s ease-out forwards; }
+
+  @keyframes calExitLeft {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(-30px); }
+  }
+  @keyframes calExitRight {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(30px); }
+  }
+  @keyframes calEnterLeft {
+    from { opacity: 0; transform: translateX(-30px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes calEnterRight {
+    from { opacity: 0; transform: translateX(30px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
 
 
   .calendar-weekdays {
