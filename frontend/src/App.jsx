@@ -372,7 +372,6 @@ const Toast = ({ message, visible, type = 'success', onHide }) => {
 import floatingObjectImg from './img/Floating Object.png';
 import calendarImg from './img/Calendar.png';
 import notificationImg from './img/Notificastion.png';
-import fadeGlowImg from './img/Fade.png';
 
 const OnboardingScreen = ({ onComplete, theme }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -382,7 +381,6 @@ const OnboardingScreen = ({ onComplete, theme }) => {
   const slides = [
     {
       mainImage: floatingObjectImg,
-      useGlow: true,
       imageClass: 'floating-objects',
       title: 'Привет!',
       subtitle: 'Это ',
@@ -391,7 +389,6 @@ const OnboardingScreen = ({ onComplete, theme }) => {
     },
     {
       mainImage: calendarImg,
-      useGlow: false,
       imageClass: 'calendar',
       title: 'Все подписки',
       subtitle: '',
@@ -400,7 +397,6 @@ const OnboardingScreen = ({ onComplete, theme }) => {
     },
     {
       mainImage: notificationImg,
-      useGlow: true,
       imageClass: 'notification',
       title: 'Уведомления',
       subtitle: '',
@@ -457,9 +453,6 @@ const OnboardingScreen = ({ onComplete, theme }) => {
           {slides.map((slide, index) => (
             <div key={index} className="slide">
               <div className={`slide-image-area ${slide.imageClass}`}>
-                {slide.useGlow && (
-                  <img className="slide-glow" src={fadeGlowImg} alt="" />
-                )}
                 <img className="slide-main-img" src={slide.mainImage} alt="" />
               </div>
               <div className="slide-text">
@@ -2361,42 +2354,45 @@ export default function SubfyApp() {
 
   // Инициализация Telegram WebApp
   useEffect(() => {
-    const tg = getTelegram();
-    if (tg) {
-      tg.ready();
-      tg.expand();
+    try {
+      const tg = getTelegram();
+      if (tg) {
+        tg.ready();
+        tg.expand();
 
-      // Request full screen mode for Telegram 2.0
-      if (tg.requestFullscreen) {
-        tg.requestFullscreen();
+        // Request full screen mode for Telegram 2.0
+        if (tg.requestFullscreen) {
+          try { tg.requestFullscreen(); } catch {}
+        }
+
+        // Disable swipe-to-close gesture
+        if (tg.disableVerticalSwipes) {
+          try { tg.disableVerticalSwipes(); } catch {}
+        }
+
+        // Set up CSS variables for Telegram safe area insets
+        const updateSafeAreaInsets = () => {
+          const safeAreaTop = tg.safeAreaInset?.top || 0;
+          const safeAreaBottom = tg.safeAreaInset?.bottom || 0;
+          const contentSafeAreaTop = tg.contentSafeAreaInset?.top || 0;
+          const contentSafeAreaBottom = tg.contentSafeAreaInset?.bottom || 0;
+
+          document.documentElement.style.setProperty('--tg-safe-area-top', `${safeAreaTop}px`);
+          document.documentElement.style.setProperty('--tg-safe-area-bottom', `${safeAreaBottom}px`);
+          document.documentElement.style.setProperty('--tg-content-safe-area-top', `${contentSafeAreaTop}px`);
+          document.documentElement.style.setProperty('--tg-content-safe-area-bottom', `${contentSafeAreaBottom}px`);
+        };
+
+        updateSafeAreaInsets();
+
+        // Listen for viewport changes
+        tg.onEvent?.('viewportChanged', updateSafeAreaInsets);
+        tg.onEvent?.('safeAreaChanged', updateSafeAreaInsets);
+        tg.onEvent?.('contentSafeAreaChanged', updateSafeAreaInsets);
+        tg.onEvent?.('fullscreenChanged', updateSafeAreaInsets);
       }
-
-      // Disable swipe-to-close gesture
-      if (tg.disableVerticalSwipes) {
-        tg.disableVerticalSwipes();
-      }
-
-      // Set up CSS variables for Telegram safe area insets
-      const updateSafeAreaInsets = () => {
-        const safeAreaTop = tg.safeAreaInset?.top || 0;
-        const safeAreaBottom = tg.safeAreaInset?.bottom || 0;
-        const contentSafeAreaTop = tg.contentSafeAreaInset?.top || 0;
-        const contentSafeAreaBottom = tg.contentSafeAreaInset?.bottom || 0;
-
-        document.documentElement.style.setProperty('--tg-safe-area-top', `${safeAreaTop}px`);
-        document.documentElement.style.setProperty('--tg-safe-area-bottom', `${safeAreaBottom}px`);
-        document.documentElement.style.setProperty('--tg-content-safe-area-top', `${contentSafeAreaTop}px`);
-        document.documentElement.style.setProperty('--tg-content-safe-area-bottom', `${contentSafeAreaBottom}px`);
-      };
-
-      updateSafeAreaInsets();
-
-      // Listen for viewport changes
-      tg.onEvent?.('viewportChanged', updateSafeAreaInsets);
-      tg.onEvent?.('safeAreaChanged', updateSafeAreaInsets);
-      tg.onEvent?.('contentSafeAreaChanged', updateSafeAreaInsets);
-      tg.onEvent?.('fullscreenChanged', updateSafeAreaInsets);
-
+    } catch (e) {
+      console.warn('Telegram WebApp init error:', e);
     }
     initializeApp();
   }, []);
@@ -3107,53 +3103,58 @@ const styles = `
     flex: 1;
     width: 100%;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
     position: relative;
     overflow: hidden;
     min-height: 0;
-    padding-bottom: 16px;
   }
 
-  .slide-glow {
+  /* CSS glow background — replaces Fade.png, same on every slide */
+  .slide-image-area::before {
+    content: '';
     position: absolute;
-    width: 130%;
-    height: 130%;
-    object-fit: contain;
-    opacity: 0.65;
-    pointer-events: none;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    height: 80%;
+    border-radius: 40%;
+    background: radial-gradient(ellipse at center,
+      rgba(99, 102, 241, 0.55) 0%,
+      rgba(99, 102, 241, 0.3) 30%,
+      rgba(99, 102, 241, 0.08) 60%,
+      transparent 80%
+    );
+    filter: blur(30px);
     z-index: 0;
-  }
-
-  .onboarding.light .slide-glow {
-    display: none;
+    pointer-events: none;
   }
 
   .onboarding.light .slide-image-area::before {
-    content: '';
-    position: absolute;
-    width: 70%;
-    height: 70%;
-    background: radial-gradient(ellipse, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
-    z-index: 0;
-    pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(99, 102, 241, 0.12) 0%,
+      rgba(99, 102, 241, 0.05) 40%,
+      transparent 70%
+    );
+    filter: blur(20px);
   }
 
   .slide-main-img {
     position: relative;
     z-index: 1;
     max-width: 95%;
-    max-height: 95%;
+    max-height: 90%;
     object-fit: contain;
   }
 
-  /* Slide 1: Floating objects */
+  /* Slide 1: Floating objects — big and centered */
   .slide-image-area.floating-objects .slide-main-img {
-    max-width: 85%;
-    max-height: 85%;
+    max-width: 90%;
+    max-height: 90%;
   }
 
-  /* Slide 2: Calendar */
+  /* Slide 2: Calendar — big */
   .slide-image-area.calendar .slide-main-img {
     max-width: 100%;
     max-height: 100%;
